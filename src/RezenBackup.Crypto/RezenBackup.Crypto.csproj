@@ -8,5 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RezenBackup.Tests" />
+    <InternalsVisibleTo Include="RezenBackup.UI.Tests" />
   </ItemGroup>
 </Project>

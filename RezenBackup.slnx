@@ -19,5 +19,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RezenBackup.Tests/RezenBackup.Tests.csproj" />
+    <Project Path="tests/RezenBackup.UI.Tests/RezenBackup.UI.Tests.csproj" />
   </Folder>
 </Solution>
