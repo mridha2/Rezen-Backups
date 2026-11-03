@@ -307,4 +307,41 @@ public class ApplicationFlowTests
         Assert.Equal(BackupMethod.Incremental, f.App.Backups.ChooseMethod(job));
         ks.Secret.Dispose();
     }
+
+    /// <summary>Drive rotation: one job, two drives; each drive keeps its own complete, verified history.</summary>
+    [Fact]
+    public async Task DriveRotation_BacksUpToEveryConnectedDrive()
+    {
+        using var f = new AppFixture();
+        var (job, ks) = Setup(f);
+        var drive2 = Path.Combine(f.Root, "offsite-drive");
+        Directory.CreateDirectory(drive2);
+        var second = f.App.Jobs.AddDestination(job.Id, drive2, ks.Secret);
+        Assert.Equal(2, f.App.Db.RepositoriesForJob(job.Id).Count);
+        Assert.Throws<RezenException>(() => f.App.Jobs.AddDestination(job.Id, drive2, ks.Secret)); // same drive twice
+
+        var both = await f.App.Backups.RunAsync(job.Id, RunTrigger.Manual, ks.Secret.Clone());
+        Assert.Equal(RunOutcome.Success, both.Outcome);
+        Assert.Equal(2, f.App.Db.Snapshots(job.Id).Select(s => s.RepositoryId).Distinct().Count());
+
+        // Take the off-site drive away; the next backup only goes to the drive that is present.
+        var hidden = drive2 + "-away";
+        Directory.Move(drive2, hidden);
+        var oneDrive = await f.App.Backups.RunAsync(job.Id, RunTrigger.Manual, ks.Secret.Clone());
+        Assert.Equal(RunOutcome.Success, oneDrive.Outcome);
+        Assert.Equal(1, f.App.Db.Snapshots(job.Id).Count(s => s.RepositoryId == second.Id));
+
+        // It comes back and is caught up.
+        Directory.Move(hidden, drive2);
+        await f.App.Backups.RunAsync(job.Id, RunTrigger.DriveConnected, ks.Secret.Clone());
+        Assert.Equal(2, f.App.Db.Snapshots(job.Id).Count(s => s.RepositoryId == second.Id));
+
+        using var session = await UnlockedSession.UnlockAsync(f.App, ks.Info.Id, AppFixture.Password);
+        Assert.Equal(2, session.OpenCatalog(job.Id, second.Id).RestorableSnapshots.Count());
+
+        f.App.Jobs.RemoveDestination(job.Id, second.Id);
+        Assert.True(Directory.Exists(Path.Combine(drive2, "Rezen Backup"))); // nothing deleted on the drive
+        Assert.Throws<RezenException>(() => f.App.Jobs.RemoveDestination(job.Id, f.App.Db.RepositoriesForJob(job.Id).Single().Id));
+        ks.Secret.Dispose();
+    }
 }

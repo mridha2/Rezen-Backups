@@ -122,10 +122,14 @@ public sealed class AgentHost : IAsyncDisposable
             return;
         }
 
-        foreach (var job in _app.Db.Jobs().Where(j => j.Enabled && j.AutoRunOnConnect && j.DriveId == drive.DriveId))
+        var reposOnDrive = _app.Db.Repositories().Where(r => r.DriveId == drive.DriveId).ToList();
+        foreach (var job in _app.Db.Jobs().Where(j => j.Enabled && j.AutoRunOnConnect && reposOnDrive.Any(r => r.JobId == j.Id)))
         {
+            // Drive rotation: catch up based on the newest backup *on this drive*, not on any drive.
+            var repoIds = reposOnDrive.Where(r => r.JobId == job.Id).Select(r => r.Id).ToHashSet();
+            var lastOnDrive = _app.Db.Snapshots(job.Id).Where(s => repoIds.Contains(s.RepositoryId)).Select(s => (DateTimeOffset?)s.StartedUtc).DefaultIfEmpty(null).Max();
             var last = _app.Db.Runs(job.Id, 1).FirstOrDefault();
-            var next = job.Schedule.Kind == Core.Policies.ScheduleKind.Manual ? null : Core.Policies.ScheduleCalculator.NextRun(job.Schedule, last?.StartedUtc ?? job.CreatedUtc);
+            var next = job.Schedule.Kind == Core.Policies.ScheduleKind.Manual ? null : Core.Policies.ScheduleCalculator.NextRun(job.Schedule, lastOnDrive ?? job.CreatedUtc);
             bool pending = last?.Outcome is RunOutcome.WaitingForDrive or RunOutcome.Failed || (next is { } n && n <= DateTimeOffset.Now);
             if (pending)
             {

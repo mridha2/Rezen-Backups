@@ -17,7 +17,7 @@ namespace RezenBackup.Application;
 public sealed class UnlockedSession : IDisposable
 {
     private readonly RezenApp _app;
-    private readonly Dictionary<Guid, (Repository Repo, CatalogSession Catalog)> _open = [];
+    private readonly Dictionary<Guid, (Guid JobId, Repository Repo, CatalogSession Catalog)> _open = [];
     private RootSecret? _secret;
 
     private UnlockedSession(RezenApp app, Guid keySetId, RootSecret secret)
@@ -39,12 +39,16 @@ public sealed class UnlockedSession : IDisposable
     public static UnlockedSession UnlockWithRecoveryKey(RezenApp app, Guid keySetId, string recoveryKey) =>
         new(app, keySetId, app.KeySets.UnlockWithRecoveryKey(keySetId, recoveryKey));
 
-    /// <summary>Opens the job's catalog (drive must be connected). Integrity problems are reported per snapshot.</summary>
-    public CatalogSession OpenCatalog(Guid jobId, IProgress<string>? progress = null)
+    /// <summary>
+    /// Opens the catalog of one of the job's drives (a specific repository, or the first connected one). Integrity
+    /// problems are reported per snapshot.
+    /// </summary>
+    public CatalogSession OpenCatalog(Guid jobId, Guid? repositoryId = null, IProgress<string>? progress = null)
     {
-        if (_open.TryGetValue(jobId, out var existing))
+        var existing = _open.FirstOrDefault(kv => kv.Value.JobId == jobId && (repositoryId is null || kv.Key == repositoryId));
+        if (existing.Value.Catalog is not null)
         {
-            return existing.Catalog;
+            return existing.Value.Catalog;
         }
 
         var job = _app.Db.Job(jobId) ?? throw new RezenException(ErrorCode.InvalidConfiguration, "Unknown job.");
@@ -53,13 +57,13 @@ public sealed class UnlockedSession : IDisposable
             throw new RezenException(ErrorCode.WrongPassword);
         }
 
-        var path = _app.Jobs.RepositoryPath(jobId) ?? throw new RezenException(ErrorCode.DestinationDisconnected, "Connect the backup drive to browse this backup.", null, null);
+        var path = _app.Jobs.RepositoryPath(jobId, repositoryId) ?? throw new RezenException(ErrorCode.DestinationDisconnected, "Connect the backup drive to browse this backup.", null, null);
         var repo = Repository.Open(path, Secret, _app.Platform.Durable);
         try
         {
-            repo.LoadIndex(_app.Jobs.IndexCachePath(jobId), progress);
+            repo.LoadIndex(_app.Jobs.IndexCachePath(repo.RepositoryId), progress);
             var catalog = new CatalogSession(repo);
-            _open[jobId] = (repo, catalog);
+            _open[repo.RepositoryId] = (jobId, repo, catalog);
             SyncSnapshotRows(jobId, repo.RepositoryId, catalog);
             return catalog;
         }
@@ -118,9 +122,9 @@ public sealed class UnlockedSession : IDisposable
         }
     }
 
-    public async Task<RestoreReport> RestoreAsync(Guid jobId, IReadOnlyList<CatalogItem> items, RestoreOptions options, IProgress<RestoreProgress>? progress = null, CancellationToken ct = default)
+    public async Task<RestoreReport> RestoreAsync(Guid jobId, IReadOnlyList<CatalogItem> items, RestoreOptions options, IProgress<RestoreProgress>? progress = null, CancellationToken ct = default, Guid? repositoryId = null)
     {
-        var catalog = OpenCatalog(jobId);
+        var catalog = OpenCatalog(jobId, repositoryId);
         var executor = new RestoreExecutor(catalog, _app.Loggers.CreateLogger("Restore"));
         var report = await executor.RestoreAsync(items, options, progress, ct).ConfigureAwait(false);
         _app.SecurityLog.Record(SecurityEvents.Restore, jobId, $"files: {report.FilesRestored}, failed: {report.FilesFailed}");
@@ -133,9 +137,9 @@ public sealed class UnlockedSession : IDisposable
         return report;
     }
 
-    public DeepVerifyReport DeepVerify(Guid jobId, IProgress<DeepVerifyProgress>? progress = null, CancellationToken ct = default)
+    public DeepVerifyReport DeepVerify(Guid jobId, IProgress<DeepVerifyProgress>? progress = null, CancellationToken ct = default, Guid? repositoryId = null)
     {
-        var catalog = OpenCatalog(jobId);
+        var catalog = OpenCatalog(jobId, repositoryId);
         var report = new RepositoryVerifier(catalog.Repository).Verify(progress, ct);
         _app.Db.SetSetting($"job.{jobId}.lastDeepVerify", DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
         _app.SecurityLog.Record(report.Healthy ? SecurityEvents.BackupVerified : SecurityEvents.IntegrityFailure, jobId, report.Healthy ? "deep verification passed" : "deep verification found problems");
@@ -143,13 +147,13 @@ public sealed class UnlockedSession : IDisposable
     }
 
     /// <summary>Quarantines damaged packs so the next backup re-stores the affected data from the source files.</summary>
-    public void RepairFromSource(Guid jobId, DeepVerifyReport report)
+    public void RepairFromSource(Guid jobId, DeepVerifyReport report, Guid? repositoryId = null)
     {
-        var catalog = OpenCatalog(jobId);
+        var catalog = OpenCatalog(jobId, repositoryId);
         var verifier = new RepositoryVerifier(catalog.Repository);
         foreach (var d in report.DamagedPacks.Where(d => !d.RecoveredFromCopy))
         {
-            verifier.Quarantine(d.PackId, d.Kind, _app.Jobs.IndexCachePath(jobId));
+            verifier.Quarantine(d.PackId, d.Kind, _app.Jobs.IndexCachePath(catalog.Repository.RepositoryId));
         }
 
         Close(jobId);
@@ -158,7 +162,10 @@ public sealed class UnlockedSession : IDisposable
     /// <summary>Decrypts the file paths behind "3 files could not be backed up" (spec §68).</summary>
     public IReadOnlyList<(IssueKind Kind, string Path, string? Detail)> RunIssues(Guid jobId, Guid runId)
     {
-        var catalog = OpenCatalog(jobId);
+        // Paths are sealed with the key of the drive the run wrote to.
+        var run = _app.Db.Runs(jobId).FirstOrDefault(r => r.Id == runId);
+        var repositoryId = run?.SnapshotId is { } sid ? _app.Db.Snapshots(jobId, includeDeleted: true).FirstOrDefault(s => s.Id == sid)?.RepositoryId : null;
+        var catalog = OpenCatalog(jobId, repositoryId);
         var result = new List<(IssueKind, string, string?)>();
         foreach (var issue in _app.Db.RunIssues(runId))
         {
@@ -187,18 +194,22 @@ public sealed class UnlockedSession : IDisposable
     /// <summary>A copy of the secret for handing a run to the background agent; the caller must dispose it.</summary>
     public RootSecret CloneSecret() => Secret.Clone();
 
+    /// <summary>Closes every open catalog of the job.</summary>
     public void Close(Guid jobId)
     {
-        if (_open.Remove(jobId, out var entry))
+        foreach (var key in _open.Where(kv => kv.Value.JobId == jobId).Select(kv => kv.Key).ToList())
         {
-            entry.Catalog.Dispose();
-            entry.Repo.Dispose();
+            if (_open.Remove(key, out var entry))
+            {
+                entry.Catalog.Dispose();
+                entry.Repo.Dispose();
+            }
         }
     }
 
     public void Dispose()
     {
-        foreach (var id in _open.Keys.ToList())
+        foreach (var id in _open.Values.Select(v => v.JobId).Distinct().ToList())
         {
             Close(id);
         }

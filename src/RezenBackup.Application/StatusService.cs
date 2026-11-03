@@ -58,16 +58,22 @@ public sealed class StatusService
         var lastRun = runs.FirstOrDefault(r => r.Outcome != RunOutcome.Running);
         var lastSuccess = runs.FirstOrDefault(r => r.Outcome is RunOutcome.Success or RunOutcome.CompletedWithWarnings);
         var snapshots = _app.Db.Snapshots(job.Id);
-        var repo = _app.Db.RepositoriesForJob(job.Id).FirstOrDefault();
-        bool driveConnected = repo is not null && connected.ContainsKey(repo.DriveId);
-        var drive = repo is null ? null : _app.Db.Drive(repo.DriveId);
+        var repos = _app.Db.RepositoriesForJob(job.Id);
+        var connectedRepos = repos.Where(r => connected.ContainsKey(r.DriveId)).ToList();
+        bool driveConnected = connectedRepos.Count > 0;
+        var labels = repos.Select(r => _app.Db.Drive(r.DriveId)?.Label ?? "backup drive").ToList();
         VolumeInfo? volume = null;
-        string? repoPath = null;
-        if (driveConnected)
+        var repoPaths = new List<string>();
+        foreach (var r in connectedRepos)
         {
-            var mount = connected[repo!.DriveId].MountPath;
-            volume = _app.Platform.Volumes.GetVolumeForPath(mount) ?? FreeSpace.VolumeFor(mount);
-            repoPath = Path.Combine(mount, repo.RelativePath);
+            var mount = connected[r.DriveId].MountPath;
+            var vol = _app.Platform.Volumes.GetVolumeForPath(mount) ?? FreeSpace.VolumeFor(mount);
+            if (volume is null || (vol is not null && vol.FreeBytes < volume.FreeBytes))
+            {
+                volume = vol;
+            }
+
+            repoPaths.Add(Path.Combine(mount, r.RelativePath));
         }
 
         var warnings = new List<string>();
@@ -104,12 +110,12 @@ public sealed class StatusService
         }
 
         var keySet = _app.Db.KeySet(job.KeySetId);
-        if (keySet is not null && repo is not null && repo.PasswordGeneration < keySet.PasswordGeneration)
+        if (keySet is not null && repos.Any(r => r.PasswordGeneration < keySet.PasswordGeneration))
         {
             warnings.Add("This backup drive still uses your previous password. Connect it to finish updating.");
         }
 
-        bool incomplete = repoPath is not null && Directory.Exists(repoPath) && Directory.EnumerateDirectories(repoPath, "*.incomplete").Any();
+        bool incomplete = repoPaths.Any(p => Directory.Exists(p) && Directory.EnumerateDirectories(p, "*.incomplete").Any());
         if (incomplete)
         {
             warnings.Add("An interrupted backup was found. Resume it or discard it.");
@@ -123,7 +129,7 @@ public sealed class StatusService
             LastSuccess = lastSuccess,
             Security = !driveConnected && security == SecurityStatus.EncryptedAndVerified ? SecurityStatus.EncryptedAndVerified : security,
             DriveConnected = driveConnected,
-            DriveLabel = drive?.Label,
+            DriveLabel = string.Join(", ", labels),
             Volume = volume,
             NextRun = BackupScheduler.NextRun(job, lastAttempt, DateTimeOffset.Now),
             IsRunning = runningHint || runs.FirstOrDefault()?.Outcome == RunOutcome.Running,

@@ -138,7 +138,10 @@ public sealed partial class AppDatabase
             CreatedUtc = ParseTs(r.GetString(5)),
         });
 
-    public IReadOnlyList<RepositoryRecord> RepositoriesForJob(Guid jobId) => Repositories().Where(r => r.JobId == jobId).ToList();
+    public IReadOnlyList<RepositoryRecord> RepositoriesForJob(Guid jobId) => Repositories().Where(r => r.JobId == jobId).OrderBy(r => r.CreatedUtc).ToList();
+
+    /// <summary>Forgets a repository on this computer. Nothing on the backup drive is touched.</summary>
+    public void DeleteRepository(Guid repositoryId) => Exec("DELETE FROM repositories WHERE id=$id", ("$id", repositoryId.ToString()));
 
     // ---------------------------------------------------------------- snapshots
 

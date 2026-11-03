@@ -158,24 +158,105 @@ public sealed class JobService
 
     public RepositoryRecord? RepositoryFor(Guid jobId) => _app.Db.RepositoriesForJob(jobId).FirstOrDefault();
 
-    /// <summary>Path of the job's repository if its drive is connected.</summary>
-    public string? RepositoryPath(Guid jobId)
+    /// <summary>The job's repositories whose drives are connected now (drive rotation: one per drive).</summary>
+    public IReadOnlyList<(RepositoryRecord Record, string Path)> ConnectedRepositories(Guid jobId)
     {
-        var rec = RepositoryFor(jobId);
-        if (rec is null)
+        var connected = _app.ConnectedDrives();
+        var result = new List<(RepositoryRecord, string)>();
+        foreach (var rec in _app.Db.RepositoriesForJob(jobId))
         {
-            return null;
+            if (!connected.TryGetValue(rec.DriveId, out var drive))
+            {
+                continue;
+            }
+
+            var record = _app.Db.Drive(rec.DriveId);
+            if (record is not null && record.LastMountPath != drive.MountPath)
+            {
+                _app.Db.UpsertDrive(record with { LastMountPath = drive.MountPath, LastSeenUtc = DateTimeOffset.UtcNow });
+            }
+
+            var path = Path.Combine(drive.MountPath, rec.RelativePath);
+            if (Repository.Exists(path))
+            {
+                result.Add((rec, path));
+            }
         }
 
-        var mount = _app.Drives.MountPath(rec.DriveId);
-        if (mount is null)
-        {
-            return null;
-        }
-
-        var path = Path.Combine(mount, rec.RelativePath);
-        return Repository.Exists(path) ? path : null;
+        return result;
     }
 
-    public string IndexCachePath(Guid jobId) => RepositoryFor(jobId) is { } r ? _app.Paths.IndexCachePath(r.Id) : _app.Paths.IndexCachePath(jobId);
+    /// <summary>Path of a connected repository of the job (a specific one, or the first connected).</summary>
+    public string? RepositoryPath(Guid jobId, Guid? repositoryId = null) =>
+        ConnectedRepositories(jobId).Where(r => repositoryId is null || r.Record.Id == repositoryId).Select(r => r.Path).FirstOrDefault();
+
+    public string IndexCachePath(Guid repositoryId) => _app.Paths.IndexCachePath(repositoryId);
+
+    public string DriveLabel(RepositoryRecord record) => _app.Db.Drive(record.DriveId)?.Label ?? "backup drive";
+
+    /// <summary>
+    /// Adds another backup drive to a job (drive rotation, DESIGN §21.2). The new drive gets its own repository under
+    /// the same password; backups go to whichever of the job's drives are connected.
+    /// </summary>
+    public RepositoryRecord AddDestination(Guid jobId, string destinationRoot, RootSecret secret)
+    {
+        var job = Get(jobId) ?? throw new RezenException(ErrorCode.InvalidConfiguration, "Unknown job.");
+        var blocking = _app.Drives.Validate(destinationRoot, job.Sources).FirstOrDefault(m => m.Severity == ValidationSeverity.Blocking);
+        if (blocking is not null)
+        {
+            throw new RezenException(ErrorCode.UnsafeConfiguration, blocking.Message, null, null);
+        }
+
+        var keyFile = _app.KeySets.LocalKeyFile(job.KeySetId) ?? throw new RezenException(ErrorCode.KeyUnavailable, "The key file for this password is missing on this computer.");
+        if (!keyFile.MatchesKeyCheck(secret))
+        {
+            throw new RezenException(ErrorCode.WrongPassword);
+        }
+
+        var drive = _app.Drives.Register(destinationRoot);
+        if (_app.Db.RepositoriesForJob(jobId).Any(r => r.DriveId == drive.Id))
+        {
+            throw new RezenException(ErrorCode.InvalidConfiguration, "This drive is already used by this backup job.", null, null);
+        }
+
+        var backupRoot = RepositoryLayout.BackupRootOnVolume(destinationRoot);
+        var jobFolder = job.JobFolder;
+        for (int i = 2; Directory.Exists(Path.Combine(backupRoot, job.ComputerFolder, jobFolder)); i++)
+        {
+            jobFolder = $"{job.JobFolder} ({i})";
+        }
+
+        var repoPath = RepositoryLayout.RepositoryPath(backupRoot, job.ComputerFolder, jobFolder);
+        using var repo = Repository.Create(repoPath, job.KeySetId, secret, keyFile, new RepositoryConfig
+        {
+            JobName = job.Name,
+            HostName = Environment.MachineName,
+            CreatedUtc = DateTimeOffset.UtcNow,
+            AppVersion = RezenApp.AppVersion,
+            Sources = job.Sources,
+        }, _app.Platform.Durable);
+        var record = new RepositoryRecord
+        {
+            Id = repo.RepositoryId,
+            JobId = jobId,
+            DriveId = drive.Id,
+            RelativePath = Path.GetRelativePath(destinationRoot, repoPath),
+            PasswordGeneration = _app.Db.KeySet(job.KeySetId)?.PasswordGeneration ?? 1,
+            CreatedUtc = DateTimeOffset.UtcNow,
+        };
+        _app.Db.UpsertRepository(record);
+        return record;
+    }
+
+    /// <summary>Stops using a drive for this job on this computer. Its backups stay on the drive and can be imported.</summary>
+    public void RemoveDestination(Guid jobId, Guid repositoryId)
+    {
+        var repos = _app.Db.RepositoriesForJob(jobId);
+        if (repos.Count <= 1)
+        {
+            throw new RezenException(ErrorCode.InvalidConfiguration, "A backup job needs at least one backup drive.", null, null);
+        }
+
+        _app.Db.DeleteRepository(repositoryId);
+    }
 }

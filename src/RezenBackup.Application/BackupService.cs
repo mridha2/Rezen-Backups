@@ -32,6 +32,9 @@ public sealed class ActiveRun
 
     public bool Waiting { get; internal set; }
 
+    /// <summary>The backup drive this run writes to (several drives are backed up one after another).</summary>
+    public string? DriveLabel { get; internal set; }
+
     public PauseGate Pause { get; } = new();
 
     internal CancellationTokenSource Cancellation { get; } = new();
@@ -55,13 +58,54 @@ public sealed class BackupService
     public event Action<RunRow>? RunCompleted;
 
     /// <summary>
-    /// Runs a job now. <paramref name="providedSecret"/> is used when the user typed the password for this run; otherwise
-    /// the remembered credential is used. The secret is disposed when the run ends.
+    /// Runs a job now on every connected drive of the job (drive rotation), one drive after another.
+    /// <paramref name="providedSecret"/> is used when the user typed the password for this run; otherwise the remembered
+    /// credential is used. The secret is disposed when the run ends. Returns the most significant outcome.
     /// </summary>
     public async Task<RunRow> RunAsync(Guid jobId, RunTrigger trigger, RootSecret? providedSecret = null, string? resumeFolder = null, CancellationToken ct = default)
     {
         var job = _app.Db.Job(jobId) ?? throw new RezenException(ErrorCode.InvalidConfiguration, "Unknown backup job.");
-        var run = new ActiveRun(CryptoRandom.NewId(), job, trigger);
+        try
+        {
+            var targets = _app.Jobs.ConnectedRepositories(jobId);
+            if (targets.Count == 0)
+            {
+                return await RunOneAsync(job, trigger, null, providedSecret?.Clone(), null, ct).ConfigureAwait(false);
+            }
+
+            RunRow? worst = null;
+            foreach (var target in targets)
+            {
+                var resume = resumeFolder is not null && Directory.Exists(Path.Combine(target.Path, resumeFolder)) ? resumeFolder : null;
+                var row = await RunOneAsync(job, trigger, target, providedSecret?.Clone(), resume, ct).ConfigureAwait(false);
+                worst = worst is null || Rank(row.Outcome) > Rank(worst.Outcome) ? row : worst;
+                if (row.Outcome is RunOutcome.Cancelled or RunOutcome.WaitingForPassword)
+                {
+                    break;
+                }
+            }
+
+            return worst!;
+        }
+        finally
+        {
+            providedSecret?.Dispose();
+        }
+    }
+
+    private static int Rank(RunOutcome o) => o switch
+    {
+        RunOutcome.Failed => 6,
+        RunOutcome.WaitingForPassword => 5,
+        RunOutcome.Cancelled => 4,
+        RunOutcome.WaitingForDrive => 3,
+        RunOutcome.CompletedWithWarnings => 2,
+        _ => 1,
+    };
+
+    private async Task<RunRow> RunOneAsync(JobDefinition job, RunTrigger trigger, (RepositoryRecord Record, string Path)? target, RootSecret? secret, string? resumeFolder, CancellationToken ct)
+    {
+        var run = new ActiveRun(CryptoRandom.NewId(), job, trigger) { DriveLabel = target is { } t ? _app.Jobs.DriveLabel(t.Record) : null };
         if (!_active.TryAdd(run.RunId, run))
         {
             throw new InvalidOperationException();
@@ -70,22 +114,26 @@ public sealed class BackupService
         try
         {
             RunRow? result = null;
-            var record = _app.Db.RepositoriesForJob(jobId).FirstOrDefault();
-            string diskKey = record is null ? jobId.ToString() : (_app.Drives.MountPath(record.DriveId) is { } m ? DiskKey(m) : record.DriveId.ToString());
+            string diskKey = target is { } tg ? DiskKey(tg.Path) : job.Id.ToString();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, run.Cancellation.Token);
-            bool started = await _queue.RunAsync(jobId, diskKey, async token =>
+            bool started = await _queue.RunAsync(job.Id, diskKey, async token =>
             {
                 run.Waiting = false;
-                result = await ExecuteAsync(run, providedSecret, resumeFolder, token).ConfigureAwait(false);
+                result = await ExecuteAsync(run, target, secret, resumeFolder, token).ConfigureAwait(false);
             }, () => run.Waiting = true, linked.Token).ConfigureAwait(false);
 
             if (!started)
             {
-                providedSecret?.Dispose();
+                secret?.Dispose();
                 return Finish(NewRow(run) with { Outcome = RunOutcome.Cancelled, Message = "This backup is already running." }, persist: false);
             }
 
             return result!;
+        }
+        catch (OperationCanceledException)
+        {
+            secret?.Dispose();
+            return Finish(NewRow(run) with { Outcome = RunOutcome.Cancelled, Message = UserMessages.For(ErrorCode.Cancelled) });
         }
         finally
         {
@@ -105,7 +153,7 @@ public sealed class BackupService
         Security = SecurityStatus.EncryptedVerificationPending,
     };
 
-    private async Task<RunRow> ExecuteAsync(ActiveRun run, RootSecret? providedSecret, string? resumeFolder, CancellationToken ct)
+    private async Task<RunRow> ExecuteAsync(ActiveRun run, (RepositoryRecord Record, string Path)? target, RootSecret? providedSecret, string? resumeFolder, CancellationToken ct)
     {
         var job = run.Job;
         var row = NewRow(run);
@@ -113,8 +161,7 @@ public sealed class BackupService
         RootSecret? secret = providedSecret;
         try
         {
-            var repoPath = _app.Jobs.RepositoryPath(job.Id);
-            if (repoPath is null)
+            if (target is not { } t)
             {
                 if (settings.NotifyWaitingForDrive && run.Trigger != RunTrigger.Manual)
                 {
@@ -136,11 +183,12 @@ public sealed class BackupService
                 return Finish(row with { Outcome = RunOutcome.WaitingForPassword, Security = SecurityStatus.BackupLocked, Message = UserMessages.For(ErrorCode.KeyUnavailable) });
             }
 
+            var repoPath = t.Path;
+            var repoRecord = t.Record;
             _app.Db.UpsertRun(row);
             using var repo = Repository.Open(repoPath, secret, _app.Platform.Durable);
 
             // Finish a password change that happened while this drive was disconnected (DESIGN §8.2).
-            var repoRecord = _app.Db.RepositoriesForJob(job.Id).First();
             var keySet = _app.Db.KeySet(job.KeySetId);
             if (keySet is not null && repoRecord.PasswordGeneration < keySet.PasswordGeneration)
             {
@@ -157,7 +205,7 @@ public sealed class BackupService
                 Verification = job.Verification,
                 HostName = Environment.MachineName,
                 AppVersion = RezenApp.AppVersion,
-                IndexCachePath = _app.Jobs.IndexCachePath(job.Id),
+                IndexCachePath = _app.Jobs.IndexCachePath(repoRecord.Id),
                 ResumeFolderName = resumeFolder,
             };
             var runner = new BackupRunner(repo, _app.Platform.Metadata, _app.Platform.Snapshots, _app.Loggers.CreateLogger("Backup"));
@@ -204,7 +252,7 @@ public sealed class BackupService
             }
             else
             {
-                retentionNote = ApplyRetention(job, repo);
+                retentionNote = ApplyRetention(job, repo, repoRecord.Id);
             }
 
             var finished = Finish(row with
@@ -217,7 +265,8 @@ public sealed class BackupService
                 BytesNew = result.Stats.BytesNew,
                 BytesScanned = result.Stats.BytesScanned,
                 SnapshotFolder = result.FolderName,
-                Message = (result.Warnings.Count > 0 ? $"{result.Warnings.Count} file(s) could not be backed up." : "Encrypted backup completed and verified.")
+                Message = (_app.Db.RepositoriesForJob(job.Id).Count > 1 ? $"On {run.DriveLabel}: " : string.Empty)
+                    + (result.Warnings.Count > 0 ? $"{result.Warnings.Count} file(s) could not be backed up." : "Encrypted backup completed and verified.")
                     + PermissionHint(result.Warnings) + retentionNote,
             });
 
@@ -322,13 +371,13 @@ public sealed class BackupService
         return final;
     }
 
-    private string ApplyRetention(JobDefinition job, Repository repo)
+    private string ApplyRetention(JobDefinition job, Repository repo, Guid repositoryId)
     {
         try
         {
             var pinned = _app.Db.Snapshots(job.Id).Where(s => s.Pinned).Select(s => s.Id).ToHashSet();
             var runner = new RetentionRunner(repo, _app.Loggers.CreateLogger("Retention"));
-            var plan = runner.Plan(job.Retention, pinned, DateTimeOffset.Now, _app.Jobs.IndexCachePath(job.Id));
+            var plan = runner.Plan(job.Retention, pinned, DateTimeOffset.Now, _app.Jobs.IndexCachePath(repositoryId));
             if (plan.IsBlocked)
             {
                 _app.Logger.LogWarning("Retention suspended for job {Job}: {Reason}", job.Id, plan.BlockedReason);
@@ -341,8 +390,8 @@ public sealed class BackupService
             }
 
             _app.SecurityLog.Record(SecurityEvents.RetentionDeletion, job.Id, string.Join(", ", plan.ToDelete.Select(s => s.Folder.FolderName)));
-            var result = runner.Apply(plan, _app.Jobs.IndexCachePath(job.Id));
-            foreach (var s in _app.Db.Snapshots(job.Id).Where(s => result.DeletedSnapshots.Contains(s.FolderName)))
+            var result = runner.Apply(plan, _app.Jobs.IndexCachePath(repositoryId));
+            foreach (var s in _app.Db.Snapshots(job.Id).Where(s => s.RepositoryId == repositoryId && result.DeletedSnapshots.Contains(s.FolderName)))
             {
                 _app.Db.MarkSnapshotDeleted(s.Id);
             }
@@ -367,34 +416,36 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>Incomplete snapshots of a job that can be resumed or discarded (spec §56).</summary>
-    public IReadOnlyList<string> IncompleteSnapshots(Guid jobId)
-    {
-        var path = _app.Jobs.RepositoryPath(jobId);
-        if (path is null)
-        {
-            return [];
-        }
-
-        return Directory.EnumerateDirectories(path, "*" + Core.Policies.SnapshotNaming.IncompleteSuffix)
+    /// <summary>Incomplete snapshots of a job (on any connected drive) that can be resumed or discarded (spec §56).</summary>
+    public IReadOnlyList<string> IncompleteSnapshots(Guid jobId) =>
+        _app.Jobs.ConnectedRepositories(jobId)
+            .SelectMany(r => Directory.EnumerateDirectories(r.Path, "*" + Core.Policies.SnapshotNaming.IncompleteSuffix))
             .Select(Path.GetFileName)
             .OfType<string>()
+            .Distinct()
             .ToList();
-    }
 
     /// <summary>Deletes an interrupted snapshot folder. Orphaned packs are reclaimed by the next retention run.</summary>
     public void DiscardIncomplete(Guid jobId, string folderName)
     {
-        var path = _app.Jobs.RepositoryPath(jobId) ?? throw new RezenException(ErrorCode.DestinationDisconnected);
         if (!folderName.EndsWith(Core.Policies.SnapshotNaming.IncompleteSuffix, StringComparison.Ordinal) || folderName.Contains('/') || folderName.Contains('\\'))
         {
             throw new RezenException(ErrorCode.InvalidConfiguration, "Only incomplete snapshots can be discarded.");
         }
 
-        var dir = Path.Combine(path, folderName);
-        if (Directory.Exists(dir))
+        var repos = _app.Jobs.ConnectedRepositories(jobId);
+        if (repos.Count == 0)
         {
-            Directory.Delete(dir, recursive: true);
+            throw new RezenException(ErrorCode.DestinationDisconnected);
+        }
+
+        foreach (var (_, path) in repos)
+        {
+            var dir = Path.Combine(path, folderName);
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
         }
     }
 

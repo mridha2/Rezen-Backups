@@ -179,14 +179,25 @@ public sealed class ImportService
     public int RebuildCatalog(Guid jobId, UnlockedSession session)
     {
         session.Close(jobId);
-        var path = _app.Jobs.RepositoryPath(jobId) ?? throw new RezenException(ErrorCode.DestinationDisconnected);
-        using var repo = Repository.Open(path, session.Secret, _app.Platform.Durable);
-        return RebuildCatalog(jobId, repo);
+        var repos = _app.Jobs.ConnectedRepositories(jobId);
+        if (repos.Count == 0)
+        {
+            throw new RezenException(ErrorCode.DestinationDisconnected);
+        }
+
+        int total = 0;
+        foreach (var (_, path) in repos)
+        {
+            using var repo = Repository.Open(path, session.Secret, _app.Platform.Durable);
+            total += RebuildCatalog(jobId, repo);
+        }
+
+        return total;
     }
 
     private int RebuildCatalog(Guid jobId, Repository repo)
     {
-        var cache = _app.Jobs.IndexCachePath(jobId);
+        var cache = _app.Jobs.IndexCachePath(repo.RepositoryId);
         EncryptedObjects.TryDelete(cache);
         repo.LoadIndex(cache);
         int count = 0;
