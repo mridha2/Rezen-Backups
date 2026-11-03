@@ -66,7 +66,7 @@ public sealed class StatusService
         if (driveConnected)
         {
             var mount = connected[repo!.DriveId].MountPath;
-            volume = _app.Platform.Volumes.GetVolumeForPath(mount);
+            volume = _app.Platform.Volumes.GetVolumeForPath(mount) ?? FreeSpace.VolumeFor(mount);
             repoPath = Path.Combine(mount, repo.RelativePath);
         }
 

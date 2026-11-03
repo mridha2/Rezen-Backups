@@ -3,7 +3,6 @@
 
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource RzWindowBg}" />
-    <Setter Property="FontFamily" Value="{StaticResource InterFont}" />
   </Style>
 
   <Style Selector="TextBlock">

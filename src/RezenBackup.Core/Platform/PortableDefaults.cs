@@ -44,6 +44,39 @@ public sealed class LiveSourceSnapshotProvider : ISourceSnapshotProvider
 
 public static class FreeSpace
 {
+    /// <summary>Volume information for any folder, using the longest matching mount point.</summary>
+    public static VolumeInfo? VolumeFor(string path)
+    {
+        var full = Path.GetFullPath(path);
+        DriveInfo? best = null;
+        foreach (var d in DriveInfo.GetDrives())
+        {
+            try
+            {
+                var root = d.RootDirectory.FullName;
+                if (d.IsReady && full.StartsWith(root, StringComparison.OrdinalIgnoreCase) && (best is null || root.Length > best.RootDirectory.FullName.Length))
+                {
+                    best = d;
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        try
+        {
+            return best is null ? null : new VolumeInfo(best.RootDirectory.FullName, best.VolumeLabel, best.DriveFormat, best.TotalSize, best.AvailableFreeSpace, best.DriveType == DriveType.Removable, null);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Free bytes on the volume containing <paramref name="path"/> (longest matching mount point).</summary>
     public static long ForPath(string path)
     {
