@@ -141,13 +141,16 @@ public sealed class AgentHost : IAsyncDisposable
 
     private bool Start(Guid jobId, RunTrigger trigger, RootSecret? secret = null, string? resumeFolder = null)
     {
-        if (_tasks.ContainsKey(jobId) || _app.Backups.Active(jobId) is not null)
+        // Reserve the job atomically before starting, so a fast-finishing run can't leave a stale entry behind and
+        // two triggers can't both start it.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_app.Backups.Active(jobId) is not null || !_tasks.TryAdd(jobId, gate.Task))
         {
             secret?.Dispose();
             return false;
         }
 
-        var task = Task.Run(async () =>
+        _ = Task.Run(async () =>
         {
             try
             {
@@ -160,9 +163,9 @@ public sealed class AgentHost : IAsyncDisposable
             finally
             {
                 _tasks.TryRemove(jobId, out _);
+                gate.TrySetResult();
             }
         });
-        _tasks[jobId] = task;
         return true;
     }
 

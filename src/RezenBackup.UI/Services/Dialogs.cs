@@ -298,8 +298,14 @@ public static class Dialogs
                 return;
             }
 
+            // Ask before writing to a cloud-synced folder (it would upload the key), as the setup wizard does.
+            if (message is not null && !await ConfirmAsync(dlg, "Cloud folder", message, "Save anyway"))
+            {
+                return;
+            }
+
             await File.WriteAllTextAsync(path, RecoveryKit.Document(recoveryKey, keySetId));
-            status.Text = message ?? "Saved.";
+            status.Text = "Saved.";
         };
         close.Click += (_, _) => dlg.Close();
         panel.Children.Add(status);

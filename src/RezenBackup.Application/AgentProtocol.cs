@@ -55,7 +55,8 @@ public sealed class AgentClient(Core.Platform.AppPaths paths)
             await pipe.WriteAsync(Encoding.UTF8.GetBytes(line), ct).ConfigureAwait(false);
             if (secret is not null)
             {
-                var buffer = secret.Bytes.ToArray();
+                var buffer = SecureMemory.AllocatePinned(RootSecret.Length);
+                secret.Bytes.CopyTo(buffer);
                 try
                 {
                     await pipe.WriteAsync(buffer, ct).ConfigureAwait(false);

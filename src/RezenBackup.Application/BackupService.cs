@@ -187,12 +187,13 @@ public sealed class BackupService
 
             var repoPath = t.Path;
             var repoRecord = t.Record;
-            _app.Db.UpsertRun(row);
 
             // With a backup-only key this run can add a verified backup but cannot read stored contents (DESIGN §9.5).
+            // Opening takes ownership of the keys (they are disposed with the repository, also on failure).
             using var repo = secret is not null
                 ? Repository.Open(repoPath, secret, _app.Platform.Durable)
                 : Repository.OpenBackupOnly(repoPath, backupOnlyKeys!, _app.Platform.Durable);
+            _app.Db.UpsertRun(row);
 
             // Finish a password change that happened while this drive was disconnected (DESIGN §8.2).
             var keySet = _app.Db.KeySet(job.KeySetId);

@@ -577,6 +577,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
             secret.Dispose();
             _keySet = null;
+            RecoveryKey = string.Empty; // no longer kept in memory once setup is done
             Ui.App.SaveSettings(Ui.App.Settings with { SetupCompleted = true });
             await AgentLauncher.EnsureRunningAsync(Ui.App);
             Navigation.Go("dashboard");
@@ -608,6 +609,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
     public override void OnDeactivated()
     {
+        RecoveryKey = string.Empty;
         _keySet?.Secret.Dispose();
         Password = string.Empty;
         ConfirmPassword = string.Empty;
