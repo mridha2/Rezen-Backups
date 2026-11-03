@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\RezenBackup.BackupEngine\RezenBackup.BackupEngine.csproj" />
     <ProjectReference Include="..\..\src\RezenBackup.RestoreEngine\RezenBackup.RestoreEngine.csproj" />
     <ProjectReference Include="..\..\src\RezenBackup.Application\RezenBackup.Application.csproj" />
+    <ProjectReference Include="..\..\src\RezenBackup.Platform\RezenBackup.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
