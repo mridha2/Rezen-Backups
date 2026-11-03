@@ -213,7 +213,8 @@ public sealed class BackupService
                 BytesNew = result.Stats.BytesNew,
                 BytesScanned = result.Stats.BytesScanned,
                 SnapshotFolder = result.FolderName,
-                Message = (result.Warnings.Count > 0 ? $"{result.Warnings.Count} file(s) could not be backed up." : "Encrypted backup completed and verified.") + retentionNote,
+                Message = (result.Warnings.Count > 0 ? $"{result.Warnings.Count} file(s) could not be backed up." : "Encrypted backup completed and verified.")
+                    + PermissionHint(result.Warnings) + retentionNote,
             });
 
             if (settings.NotifySuccess || result.Warnings.Count > 0)
@@ -281,6 +282,12 @@ public sealed class BackupService
     }
 
     private static BackupMethod ChooseMethod(JobDefinition job) => job.Method;
+
+    /// <summary>macOS protects some folders (Desktop, Documents, Mail…) until the app is given Full Disk Access.</summary>
+    internal static string PermissionHint(IReadOnlyList<SnapshotWarning> warnings) =>
+        OperatingSystem.IsMacOS() && warnings.Any(w => w.Kind == IssueKind.PermissionDenied)
+            ? " To back up protected folders, allow Rezen Backup in System Settings → Privacy & Security → Full Disk Access."
+            : string.Empty;
 
     private RunRow Finish(RunRow row, bool persist = true)
     {

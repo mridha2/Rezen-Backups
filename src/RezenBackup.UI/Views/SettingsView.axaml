@@ -18,6 +18,12 @@
           <CheckBox Content="Show icon in the system tray / menu bar" IsChecked="{Binding ShowTrayIcon}" />
           <CheckBox Content="Run missed backups" IsChecked="{Binding RunMissed}" />
           <CheckBox Content="Keep computer awake while a backup is running" IsChecked="{Binding KeepAwake}" />
+          <Border Classes="banner-info" IsVisible="{Binding IsMac}" Margin="0,8,0,0">
+            <StackPanel Spacing="6">
+              <TextBlock TextWrapping="Wrap" Text="macOS protects folders such as Desktop, Documents and Mail. To back them up, allow Rezen Backup in Full Disk Access." />
+              <Button Content="Open Full Disk Access Settings" Command="{Binding OpenFullDiskAccessCommand}" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Border>
 

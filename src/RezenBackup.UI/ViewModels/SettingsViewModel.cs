@@ -142,6 +142,12 @@ public sealed partial class SettingsViewModel : PageViewModel
         }
     }
 
+    public bool IsMac => OperatingSystem.IsMacOS();
+
+    /// <summary>Opens System Settings → Privacy &amp; Security → Full Disk Access (a local settings pane).</summary>
+    [RelayCommand]
+    private static void OpenFullDiskAccess() => OsShell.Open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
+
     [RelayCommand]
     private void OpenDataFolder() => OsShell.Open(Ui.App.Paths.Root);
 
