@@ -26,6 +26,10 @@ public sealed class UiContext : IDisposable
         Locks.LockRequested += reason => Dispatcher.UIThread.Post(() => Lock(reason));
         _lockTimer = new DispatcherTimer(TimeSpan.FromSeconds(10), DispatcherPriority.Background, (_, _) => CheckLock());
         _lockTimer.Start();
+        _lastShow = UiSignals.Read(app.Db, UiSignals.Show);
+        _lastLock = UiSignals.Read(app.Db, UiSignals.Lock);
+        _signalTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) => CheckSignals());
+        _signalTimer.Start();
     }
 
     public RezenApp App { get; }
@@ -43,6 +47,35 @@ public sealed class UiContext : IDisposable
     public string? LastLockReason { get; private set; }
 
     public event Action? SessionChanged;
+
+    private readonly DispatcherTimer _signalTimer;
+    private string? _lastShow;
+    private string? _lastLock;
+
+    private void CheckSignals()
+    {
+        var show = UiSignals.Read(App.Db, UiSignals.Show);
+        if (show != _lastShow)
+        {
+            _lastShow = show;
+            if (MainWindow is { } w)
+            {
+                if (w.WindowState == WindowState.Minimized)
+                {
+                    w.WindowState = WindowState.Normal;
+                }
+
+                w.Activate();
+            }
+        }
+
+        var lockRequest = UiSignals.Read(App.Db, UiSignals.Lock);
+        if (lockRequest != _lastLock)
+        {
+            _lastLock = lockRequest;
+            Lock("Locked from the menu bar / tray.");
+        }
+    }
 
     private void CheckLock()
     {
@@ -212,6 +245,7 @@ public sealed class UiContext : IDisposable
     public void Dispose()
     {
         _lockTimer.Stop();
+        _signalTimer.Stop();
         Session?.Dispose();
         Session = null;
         foreach (var r in App.Backups.ActiveRuns)

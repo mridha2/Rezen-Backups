@@ -58,6 +58,8 @@ public static class AgentTray
             host.SetPausedAll(!host.PausedAll);
             pause.Header = host.PausedAll ? "Resume Backups" : "Pause Backups";
         };
+        var lockItem = new NativeMenuItem("Lock Rezen Backup");
+        lockItem.Click += (_, _) => UiSignals.Send(app.Db, UiSignals.Lock);
         var settings = new NativeMenuItem("Settings…");
         settings.Click += (_, _) => AgentLauncher.OpenMainWindow();
         var quit = new NativeMenuItem("Quit Background Protection");
@@ -74,6 +76,7 @@ public static class AgentTray
             open,
             backup,
             pause,
+            lockItem,
             settings,
             new NativeMenuItemSeparator(),
             quit,

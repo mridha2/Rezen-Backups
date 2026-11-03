@@ -23,6 +23,13 @@ public partial class App : Avalonia.Application
             {
                 AgentTray.Start(rezen, desktop);
             }
+            else if (!UiInstance.TryAcquire(rezen.Paths))
+            {
+                // Rezen Backup is already open: ask that window to come to the front, then exit.
+                UiSignals.Send(rezen.Db, UiSignals.Show);
+                rezen.Dispose();
+                desktop.Shutdown();
+            }
             else
             {
                 var ui = new UiContext(rezen);
@@ -31,6 +38,7 @@ public partial class App : Avalonia.Application
                 desktop.MainWindow = window;
                 window.Closed += (_, _) =>
                 {
+                    UiInstance.Release();
                     ui.Dispose();
                     rezen.Dispose();
                     desktop.Shutdown();
