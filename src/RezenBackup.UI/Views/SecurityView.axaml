@@ -55,7 +55,11 @@
       <Border Classes="card">
         <StackPanel Spacing="6">
           <TextBlock Text="Remember on This PC" Classes="h3" />
-          <CheckBox Content="Remember password on this PC (allow automatic scheduled backups)" IsChecked="{Binding Remember}" />
+          <CheckBox Content="Remember on this PC (allow automatic scheduled backups)" IsChecked="{Binding Remember}" />
+          <StackPanel Margin="28,0,0,0" Spacing="4" IsVisible="{Binding Remember}">
+            <RadioButton GroupName="rememberMode" Content="Backup-only key (recommended) — can add backups, cannot read them" IsChecked="{Binding BackupOnly}" />
+            <RadioButton GroupName="rememberMode" Content="Full key — can also read and restore backups" IsChecked="{Binding !BackupOnly}" />
+          </StackPanel>
           <TextBlock Text="{Binding RememberText}" Classes="label" TextWrapping="Wrap" />
         </StackPanel>
       </Border>

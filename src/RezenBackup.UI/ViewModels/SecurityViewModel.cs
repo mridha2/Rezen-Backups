@@ -54,6 +54,9 @@ public sealed partial class SecurityViewModel : PageViewModel
     private string _rememberText = string.Empty;
 
     [ObservableProperty]
+    private bool _backupOnly = true;
+
+    [ObservableProperty]
     private int _autoLockIndex;
 
     [ObservableProperty]
@@ -86,9 +89,12 @@ public sealed partial class SecurityViewModel : PageViewModel
         RecoveryConfigured = ks?.RecoveryKeyConfirmed == true;
         RecoveryText = RecoveryConfigured ? "Configured" : "Not configured — you have not confirmed saving a recovery key.";
         Remember = ks?.RememberOnThisPc == true;
-        RememberText = Remember
-            ? $"Enabled — protected by {Ui.App.Platform.Credentials.MechanismName}. Scheduled backups run automatically. Programs running under your account could use this key, so keep this computer protected."
-            : "Disabled — you will be asked for your password before each backup.";
+        BackupOnly = ks is null || !ks.RememberOnThisPc || ks.RememberBackupOnly;
+        RememberText = !Remember
+            ? "Disabled — you will be asked for your password before each backup."
+            : BackupOnly
+                ? $"Enabled with a backup-only key, protected by {Ui.App.Platform.Credentials.MechanismName}. Scheduled backups run automatically, but this key cannot decrypt the contents of your backups — restoring always needs your password or recovery key. It can see file names and backup dates."
+                : $"Enabled with the full key, protected by {Ui.App.Platform.Credentials.MechanismName}. Programs running under your account could use it to read your backups. The backup-only key is safer.";
 
         Integrity.Clear();
         foreach (var j in Ui.App.Jobs.All)
@@ -141,6 +147,14 @@ public sealed partial class SecurityViewModel : PageViewModel
         }
     }
 
+    partial void OnBackupOnlyChanged(bool value)
+    {
+        if (!_loading && Remember)
+        {
+            _ = ApplyRememberAsync(true);
+        }
+    }
+
     private async Task ApplyRememberAsync(bool value)
     {
         var ks = Ui.App.KeySets.Default;
@@ -160,7 +174,7 @@ public sealed partial class SecurityViewModel : PageViewModel
                     return;
                 }
 
-                session.SetRemember(true);
+                session.SetRemember(true, BackupOnly);
             }
             else
             {

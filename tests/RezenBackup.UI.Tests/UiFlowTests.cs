@@ -92,6 +92,7 @@ public class UiFlowTests
         Assert.True(f.App.Settings.SetupCompleted);
         Assert.True(f.App.KeySets.Default!.RecoveryKeyConfirmed);
         Assert.True(f.App.KeySets.Default!.RememberOnThisPc);
+        Assert.True(f.App.KeySets.Default!.RememberBackupOnly);
         Assert.Contains("Backup job created", DialogDriver.Opened);
 
         await UiFixture.WaitUntil(() => f.App.Db.Runs(job.Id).Any(r => r.Outcome != RunOutcome.Running));

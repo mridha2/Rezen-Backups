@@ -86,7 +86,7 @@ internal static class Program
               import <DRIVE_ROOT> [--recovery-key]  Import existing Rezen Backup from a drive
               change-password                     Change the backup password (re-wraps keys, no re-encryption)
               recovery-key                        Show the recovery key (needs password)
-              remember on|off                     Remember the key on this computer for scheduled backups
+              remember on|off [--full-key]        Remember a backup-only key (default) or the full key for scheduled backups
               history [<job>]                     Backup history
               security-log                        Security events and chain verification
               export-config                       Print configuration JSON (contains no secrets)
@@ -564,8 +564,11 @@ internal static class Program
         }
 
         using var session = await UnlockedSession.UnlockAsync(app, ks.Id, ReadPassword(opts, "Backup password: "));
-        session.SetRemember(true);
-        Console.WriteLine($"Remembered using {app.Platform.Credentials.MechanismName}. Scheduled backups can now run automatically.");
+        bool fullKey = opts.Has("full-key");
+        session.SetRemember(true, backupOnly: !fullKey);
+        Console.WriteLine(fullKey
+            ? $"Full key remembered using {app.Platform.Credentials.MechanismName}. Scheduled backups can run automatically."
+            : $"Backup-only key remembered using {app.Platform.Credentials.MechanismName}. Scheduled backups can run automatically; it cannot decrypt your backups' contents.");
         return 0;
     }
 

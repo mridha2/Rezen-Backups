@@ -383,7 +383,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         OnPropertyChanged(nameof(ShowsDayOfMonth));
     }
 
-    public string RememberExplanation => $"Scheduled backups can run automatically. The key is protected by {Ui.App.Platform.Credentials.MechanismName} for your account on this computer. If this is off, you will be asked for your password before each backup.";
+    public string RememberExplanation => $"Scheduled backups can run automatically. Only a backup-only key is kept, protected by {Ui.App.Platform.Credentials.MechanismName}: it can add new backups but cannot decrypt the contents of your backups, so restoring always needs your password or recovery key. If this is off, you will be asked for your password before each backup.";
 
     private Schedule BuildSchedule()
     {
@@ -572,7 +572,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
             var job = await Task.Run(() => Ui.App.Jobs.Create(draft, dest, secret));
             if (RememberOnPc)
             {
-                Ui.App.KeySets.SetRemember(keySetId, secret, true);
+                Ui.App.KeySets.SetRemember(keySetId, secret, true, backupOnly: true);
             }
 
             secret.Dispose();
