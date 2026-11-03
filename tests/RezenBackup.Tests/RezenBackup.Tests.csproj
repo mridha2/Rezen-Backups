@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1826;CA1515;CA1052;CA1825;CA1861;CA2016;CA1050;xUnit1031;xUnit1030</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RezenBackup.Crypto\RezenBackup.Crypto.csproj" />
+    <ProjectReference Include="..\..\src\RezenBackup.BackupEngine\RezenBackup.BackupEngine.csproj" />
+    <ProjectReference Include="..\..\src\RezenBackup.RestoreEngine\RezenBackup.RestoreEngine.csproj" />
+    <ProjectReference Include="..\..\src\RezenBackup.Application\RezenBackup.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
