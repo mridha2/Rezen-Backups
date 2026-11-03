@@ -8,4 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\RezenBackup.Core\RezenBackup.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RezenBackup.Tests" />
+  </ItemGroup>
 </Project>
