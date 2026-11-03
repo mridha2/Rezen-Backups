@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "libsodium": {
+        "type": "Direct",
+        "requested": "[1.0.21, )",
+        "resolved": "1.0.21",
+        "contentHash": "mdyeeMBfV0OfB6BDKriUZmEAL2Jm8FR1ic/IBpxkflv4kyV8lXgplzQ9J9cUtjR2jl5Fvc2mxmSloXoZeAlcPA=="
+      },
+      "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
+        "type": "Direct",
+        "requested": "[5.6.0, )",
+        "resolved": "5.6.0",
+        "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      }
+    }
+  }
+}
