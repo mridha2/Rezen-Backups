@@ -55,7 +55,7 @@ public sealed partial class RunProgressViewModel : ObservableObject
 
     public void Update(AgentProtocol.RunInfo i)
     {
-        Title = $"Securing {i.JobName}";
+        Title = i.DriveLabel is { } d ? $"Securing {i.JobName} on {d}" : $"Securing {i.JobName}";
         PhaseText = i.Paused ? "Paused" : i.PhaseText;
         FilesText = i.FilesTotal > 0 ? $"{i.FilesDone.ToString("N0", CultureInfo.CurrentCulture)} / {i.FilesTotal.ToString("N0", CultureInfo.CurrentCulture)}" : i.FilesDone.ToString("N0", CultureInfo.CurrentCulture);
         ProcessedText = $"{Fmt.Bytes(i.BytesDone)} / {Fmt.Bytes(i.BytesTotal)}";

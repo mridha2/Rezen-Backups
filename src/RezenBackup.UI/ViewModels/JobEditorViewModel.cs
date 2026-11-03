@@ -10,6 +10,8 @@ namespace RezenBackup.UI.ViewModels;
 
 public sealed record ExclusionRow(ExclusionRule Rule, string Text, string KindText);
 
+public sealed record DriveRow(Guid RepositoryId, string Label, string Detail);
+
 /// <summary>Edits an existing job: sources, exclusions, schedule, retention, verification and options.</summary>
 public sealed partial class JobEditorViewModel : PageViewModel
 {
@@ -76,6 +78,76 @@ public sealed partial class JobEditorViewModel : PageViewModel
         SkipOnBattery = _original.SkipOnBattery;
         RunMissed = _original.RunMissed;
         LoadIncomplete();
+        LoadDrives();
+    }
+
+    public ObservableCollection<DriveRow> Drives { get; } = [];
+
+    public bool CanRemoveDrive => Drives.Count > 1;
+
+    private void LoadDrives()
+    {
+        Drives.Clear();
+        var connected = Ui.App.ConnectedDrives();
+        var snapshots = Ui.App.Db.Snapshots(_original.Id);
+        foreach (var r in Ui.App.Db.RepositoriesForJob(_original.Id))
+        {
+            var last = snapshots.Where(s => s.RepositoryId == r.Id).Select(s => (DateTimeOffset?)s.StartedUtc).DefaultIfEmpty(null).Max();
+            Drives.Add(new DriveRow(r.Id, Ui.App.Jobs.DriveLabel(r),
+                (connected.ContainsKey(r.DriveId) ? "Connected" : "Not connected") + " · last backup " + Application.Fmt.When(last)));
+        }
+
+        OnPropertyChanged(nameof(CanRemoveDrive));
+    }
+
+    [RelayCommand]
+    private async Task AddDrive()
+    {
+        var picked = await Dialogs.PickFoldersAsync(Ui.MainWindow!, "Choose another backup drive", multiple: false);
+        if (picked.Count != 1)
+        {
+            return;
+        }
+
+        var session = await Ui.EnsureUnlockedAsync("Enter your password to add an encrypted backup on another drive.");
+        if (session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var root = picked[0];
+            await Task.Run(() => Ui.App.Jobs.AddDestination(_original.Id, root, session.Secret));
+            LoadDrives();
+            await Dialogs.MessageAsync(Ui.MainWindow!, "Backup drive added",
+                "Backups now go to every connected drive of this job. Keep one drive somewhere else (off-site) and swap them regularly: when a drive is connected it is brought up to date automatically.", null);
+        }
+        catch (RezenException ex)
+        {
+            await Dialogs.MessageAsync(Ui.MainWindow!, "Drive not added", ex.Message, ex.TechnicalDetails, isError: true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveDrive(DriveRow? row)
+    {
+        if (row is null || !await Dialogs.ConfirmAsync(Ui.MainWindow!, $"Stop using {row.Label}?",
+                "This computer will stop backing up to this drive. The encrypted backups already on it are not deleted and can be imported again.", "Stop Using Drive"))
+        {
+            return;
+        }
+
+        try
+        {
+            Ui.App.Jobs.RemoveDestination(_original.Id, row.RepositoryId);
+        }
+        catch (RezenException ex)
+        {
+            await Dialogs.MessageAsync(Ui.MainWindow!, "Drive not removed", ex.Message, null, isError: true);
+        }
+
+        LoadDrives();
     }
 
     public IReadOnlyList<string> RetentionLabels { get; } = RetentionChoices.Select(c => c.Label).ToList();

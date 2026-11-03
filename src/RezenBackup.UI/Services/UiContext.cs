@@ -216,7 +216,7 @@ public sealed class UiContext : IDisposable
         {
             var p = r.Progress;
             list.Add(new AgentProtocol.RunInfo(r.Job.Id, r.RunId, r.Job.Name, p.Phase.ToString(), r.Waiting ? "Waiting for another Rezen Backup job." : p.PhaseText,
-                p.FilesDone, p.FilesTotal, p.BytesDone, p.BytesTotal, p.CurrentFile, p.BytesPerSecond, p.EstimatedRemaining?.TotalSeconds, p.Paused, r.Waiting));
+                p.FilesDone, p.FilesTotal, p.BytesDone, p.BytesTotal, p.CurrentFile, p.BytesPerSecond, p.EstimatedRemaining?.TotalSeconds, p.Paused, r.Waiting, r.DriveLabel));
         }
 
         return list;

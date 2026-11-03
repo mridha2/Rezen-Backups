@@ -326,7 +326,8 @@ public sealed class AgentHost : IAsyncDisposable
         r.Progress.BytesPerSecond,
         r.Progress.EstimatedRemaining?.TotalSeconds,
         r.Pause.IsPaused,
-        r.Waiting);
+        r.Waiting,
+        r.DriveLabel);
 
     private static async Task<string?> ReadLineAsync(Stream s, int max, CancellationToken ct)
     {

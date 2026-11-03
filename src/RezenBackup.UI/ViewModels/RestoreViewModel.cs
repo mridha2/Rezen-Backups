@@ -11,7 +11,7 @@ using RezenBackup.UI.Services;
 
 namespace RezenBackup.UI.ViewModels;
 
-public sealed record JobChoice(Guid Id, string Name)
+public sealed record JobChoice(Guid Id, string Name, Guid? RepositoryId = null)
 {
     public override string ToString() => Name;
 }
@@ -69,7 +69,18 @@ public sealed partial class RestoreViewModel : PageViewModel
     {
         foreach (var j in ui.App.Jobs.All)
         {
-            Jobs.Add(new JobChoice(j.Id, j.Name));
+            var repos = ui.App.Jobs.ConnectedRepositories(j.Id);
+            if (repos.Count > 1)
+            {
+                foreach (var (record, _) in repos)
+                {
+                    Jobs.Add(new JobChoice(j.Id, $"{j.Name} — on {ui.App.Jobs.DriveLabel(record)}", record.Id));
+                }
+            }
+            else
+            {
+                Jobs.Add(new JobChoice(j.Id, j.Name));
+            }
         }
 
         SelectedJob = Jobs.FirstOrDefault(j => j.Id == jobId) ?? Jobs.FirstOrDefault();
@@ -234,7 +245,8 @@ public sealed partial class RestoreViewModel : PageViewModel
         try
         {
             var jobId = SelectedJob.Id;
-            _catalog = await Task.Run(() => session.OpenCatalog(jobId));
+            var repoId = SelectedJob.RepositoryId;
+            _catalog = await Task.Run(() => session.OpenCatalog(jobId, repoId));
             Snapshots.Clear();
             foreach (var s in _catalog.Snapshots)
             {
@@ -457,7 +469,7 @@ public sealed partial class RestoreViewModel : PageViewModel
             {
                 TargetRoot = target,
                 ResolveConflict = c => Dialogs.ConflictFromWorker(owner, c),
-            }, progress);
+            }, progress, default, SelectedJob.RepositoryId);
 
             var summary = $"Restored {report.FilesRestored:N0} file(s), skipped {report.FilesSkipped:N0}, failed {report.FilesFailed:N0}.";
             var details = string.Join(Environment.NewLine, report.Issues.Select(i => $"{i.Path}: {i.Message}")

@@ -31,7 +31,8 @@ public static class AgentProtocol
         double BytesPerSecond,
         double? EtaSeconds,
         bool Paused,
-        bool Waiting);
+        bool Waiting,
+        string? DriveLabel = null);
 
     public sealed record Response(bool Ok, string? Error = null, string? AgentVersion = null, IReadOnlyList<RunInfo>? Runs = null);
 

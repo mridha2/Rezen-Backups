@@ -46,6 +46,31 @@
         <Border Classes="card">
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Backup drives" Classes="h3" />
+              <Button Grid.Column="1" Content="Add Another Drive" Command="{Binding AddDriveCommand}" />
+            </Grid>
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="Use two or more drives and keep one away from this computer. Each drive has its own complete encrypted backup; ransomware or a fire cannot reach a drive that is not here." />
+            <ItemsControl ItemsSource="{Binding Drives}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DriveRow">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
+                    <PathIcon Data="{StaticResource IconDrive}" Width="16" Height="16" Classes="accent" />
+                    <StackPanel Grid.Column="1" Margin="10,0">
+                      <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Detail}" Classes="label" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Stop using" Classes="link" IsVisible="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).CanRemoveDrive}"
+                            Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).RemoveDriveCommand}" CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="Folders" Classes="h3" />
               <Button Grid.Column="1" Content="Add Folders" Command="{Binding AddFoldersCommand}" />
             </Grid>
