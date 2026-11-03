@@ -1310,6 +1310,8 @@ Where the implementation differs from the plan above, this section takes precede
   - "Remember on this PC" stores only per-drive *backup-only* keys by default: metadata, chunk-ID, tree-ID, chunking and check keys, plus the content public key.
   - A thief of that credential can add backups and read names and history, but cannot decrypt any stored file contents, including old versions of deleted files.
   - Retention with a backup-only key deletes dead packs but does not repack. Full verification checks the data written in that run; reused data was verified when it was first written.
+  - **Honest limit:** to recognise data it has already stored, the backup-only key includes the chunk-ID key, and trees record each file's size and SHA-256. Its holder can therefore *confirm a guess*: check whether a file they already have or can enumerate (a known document, a short PIN or password file) is in the backups. It cannot read anything it cannot guess. Removing this would mean giving up deduplication for scheduled backups.
+  - If the local index cache is lost, a backup-only run cannot index data packs it did not write and may store duplicates until the next run with the full key.
   - The full-key mode remains available as an option.
 - **Drive rotation (§21.2).** A job can have several drives, each with its own repository under the same Key Set.
   - Backups go to every connected drive in turn.

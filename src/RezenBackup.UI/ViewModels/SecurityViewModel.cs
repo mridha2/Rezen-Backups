@@ -93,7 +93,7 @@ public sealed partial class SecurityViewModel : PageViewModel
         RememberText = !Remember
             ? "Disabled — you will be asked for your password before each backup."
             : BackupOnly
-                ? $"Enabled with a backup-only key, protected by {Ui.App.Platform.Credentials.MechanismName}. Scheduled backups run automatically, but this key cannot decrypt the contents of your backups — restoring always needs your password or recovery key. It can see file names and backup dates."
+                ? $"Enabled with a backup-only key, protected by {Ui.App.Platform.Credentials.MechanismName}. Scheduled backups run automatically, but this key cannot decrypt the contents of your backups — restoring always needs your password or recovery key. It can see file names and backup dates, and could confirm whether a file someone already has or can guess (for example a short PIN file) is in your backups."
                 : $"Enabled with the full key, protected by {Ui.App.Platform.Credentials.MechanismName}. Programs running under your account could use it to read your backups. The backup-only key is safer.";
 
         Integrity.Clear();
