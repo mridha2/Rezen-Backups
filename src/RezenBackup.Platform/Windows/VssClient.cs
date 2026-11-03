@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Runtime.Versioning;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RezenBackup.Core.Platform;
@@ -24,8 +25,43 @@ public static class VssProtocol
 /// user's own token through the shadow device path, so NTFS permissions still apply. Falls back to live reads.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class VssSourceSnapshotProvider(ILogger logger) : ISourceSnapshotProvider
+public sealed partial class VssSourceSnapshotProvider(ILogger logger) : ISourceSnapshotProvider
 {
+    [GeneratedRegex(@"^\\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy\d{1,6}$", RegexOptions.CultureInvariant)]
+    private static partial Regex ShadowDevicePattern();
+
+    /// <summary>The helper must be the service installed next to this app, not any process that created the pipe name.</summary>
+    private static string ExpectedServicePath =>
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Service", "RezenBackupService.exe"));
+
+    private static unsafe string? ServerImagePath(NamedPipeClientStream pipe)
+    {
+        if (!WinNative.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint pid))
+        {
+            return null;
+        }
+
+        nint process = WinNative.OpenProcess(WinNative.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (process == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var buffer = new char[1024];
+            uint size = (uint)buffer.Length;
+            fixed (char* p = buffer)
+            {
+                return WinNative.QueryFullProcessImageName(process, 0, p, ref size) ? new string(buffer, 0, (int)size) : null;
+            }
+        }
+        finally
+        {
+            WinNative.CloseHandle(process);
+        }
+    }
+
     public async Task<ISourceView> CreateViewAsync(IReadOnlyList<string> sourceRoots, CancellationToken cancellationToken)
     {
         var volumes = sourceRoots.Select(s => Path.GetPathRoot(Path.GetFullPath(s)))
@@ -50,6 +86,14 @@ public sealed class VssSourceSnapshotProvider(ILogger logger) : ISourceSnapshotP
             return new LiveSourceView();
         }
 
+        var serverPath = ServerImagePath(pipe);
+        if (serverPath is null || !string.Equals(Path.GetFullPath(serverPath), ExpectedServicePath, StringComparison.OrdinalIgnoreCase))
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            logger.LogWarning("The shadow-copy pipe is not served by the installed Rezen Backup service; reading files directly.");
+            return new LiveSourceView();
+        }
+
         var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
         var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
         var mapping = new Dictionary<string, (string Device, string ShadowId)>(StringComparer.OrdinalIgnoreCase);
@@ -58,7 +102,7 @@ public sealed class VssSourceSnapshotProvider(ILogger logger) : ISourceSnapshotP
             await writer.WriteLineAsync(JsonSerializer.Serialize(new VssProtocol.Request("create", volume), VssProtocol.Json)).ConfigureAwait(false);
             var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
             var response = line is null ? null : JsonSerializer.Deserialize<VssProtocol.Response>(line, VssProtocol.Json);
-            if (response is { Ok: true, Device: { } device, ShadowId: { } id })
+            if (response is { Ok: true, Device: { } device, ShadowId: { } id } && ShadowDevicePattern().IsMatch(device))
             {
                 mapping[volume] = (device, id);
             }
