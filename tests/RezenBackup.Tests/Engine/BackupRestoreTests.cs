@@ -488,4 +488,31 @@ public class ReviewRegressionTests
         Assert.Equal(emptyTree, File.ReadAllBytes(Path.Combine(t.RestoreTarget, "Company Documents", "plain.bin")));
         Assert.True(Directory.Exists(Path.Combine(t.RestoreTarget, "Company Documents", "EmptyFolder")));
     }
+
+    /// <summary>Retention must not delete data of a snapshot that merely fails to load (review finding 1).</summary>
+    [Fact]
+    public async Task Retention_IsBlocked_WhileAnySnapshotFailsVerification()
+    {
+        using var t = new TestRepo();
+        t.WriteFile("only-in-first.bin", CryptoRandom.Bytes(200_000));
+        var first = await t.BackupAsync();
+        File.Delete(Path.Combine(t.Source, "only-in-first.bin"));
+        t.WriteFile("later.bin", CryptoRandom.Bytes(1000));
+        await t.BackupAsync(t.Options() with { SnapshotLocalTime = DateTime.Now.AddSeconds(5) });
+
+        var commit = Path.Combine(t.RepoPath, first.FolderName, "integrity.dat");
+        File.Move(commit, commit + ".aside");
+        t.Reopen();
+        var runner = new RetentionRunner(t.Repo);
+        var plan = runner.Plan(Core.Policies.RetentionPolicy.Forever, new HashSet<Guid>(), DateTimeOffset.Now);
+        Assert.True(plan.IsBlocked);
+        var result = runner.Apply(plan, null);
+        Assert.Equal(0, result.PacksDeleted);
+
+        File.Move(commit + ".aside", commit);
+        t.Reopen();
+        var report = await t.RestoreAllAsync(first.SnapshotId);
+        Assert.False(report.IntegrityFailure);
+        Assert.Equal(1, report.FilesRestored);
+    }
 }

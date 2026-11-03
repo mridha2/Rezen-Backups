@@ -301,6 +301,12 @@ public sealed class BackupService
             var pinned = _app.Db.Snapshots(job.Id).Where(s => s.Pinned).Select(s => s.Id).ToHashSet();
             var runner = new RetentionRunner(repo, _app.Loggers.CreateLogger("Retention"));
             var plan = runner.Plan(job.Retention, pinned, DateTimeOffset.Now, _app.Jobs.IndexCachePath(job.Id));
+            if (plan.IsBlocked)
+            {
+                _app.Logger.LogWarning("Retention suspended for job {Job}: {Reason}", job.Id, plan.BlockedReason);
+                return " Old snapshots are being kept because a backup integrity problem needs attention.";
+            }
+
             if (plan.ToDelete.Count == 0 && plan.PacksToDelete.Count == 0)
             {
                 return string.Empty;
@@ -308,12 +314,9 @@ public sealed class BackupService
 
             _app.SecurityLog.Record(SecurityEvents.RetentionDeletion, job.Id, string.Join(", ", plan.ToDelete.Select(s => s.Folder.FolderName)));
             var result = runner.Apply(plan, _app.Jobs.IndexCachePath(job.Id));
-            foreach (var s in plan.ToDelete)
+            foreach (var s in _app.Db.Snapshots(job.Id).Where(s => result.DeletedSnapshots.Contains(s.FolderName)))
             {
-                if (s.Record is { } r)
-                {
-                    _app.Db.MarkSnapshotDeleted(r.SnapshotId);
-                }
+                _app.Db.MarkSnapshotDeleted(s.Id);
             }
 
             return result.DeletedSnapshots.Count > 0

@@ -8,7 +8,22 @@ using RezenBackup.Format;
 
 namespace RezenBackup.BackupEngine;
 
-public sealed record RetentionPlan(IReadOnlyList<LoadedSnapshot> ToDelete, IReadOnlyList<Guid> PacksToDelete, IReadOnlyList<Guid> PacksToRepack, long BytesReclaimable);
+public sealed record RetentionPlan(
+    IReadOnlyList<LoadedSnapshot> ToDelete,
+    IReadOnlyList<Guid> PacksToDelete,
+    IReadOnlyList<Guid> PacksToRepack,
+    long BytesReclaimable,
+    RetentionPolicy Policy,
+    IReadOnlySet<Guid> Pinned,
+    DateTimeOffset Now,
+    string? BlockedReason = null)
+{
+    /// <summary>True when retention must not delete anything (unresolved integrity problems).</summary>
+    public bool IsBlocked => BlockedReason is not null;
+
+    public static RetentionPlan Blocked(RetentionPolicy policy, IReadOnlySet<Guid> pinned, DateTimeOffset now, string reason) =>
+        new([], [], [], 0, policy, pinned, now, reason);
+}
 
 public sealed record RetentionResult(IReadOnlyList<string> DeletedSnapshots, int PacksDeleted, int PacksRepacked, long BytesReclaimed);
 
@@ -28,14 +43,36 @@ public sealed class RetentionRunner
         _logger = logger ?? NullLogger.Instance;
     }
 
-    public RetentionPlan Plan(RetentionPolicy policy, ISet<Guid> pinned, DateTimeOffset now, string? indexCachePath = null, CancellationToken ct = default)
+    /// <summary>
+    /// Computes what the policy would remove. This is a preview: <see cref="Apply"/> recomputes the plan under the
+    /// repository lock so a backup committed in the meantime by another process is never affected.
+    /// </summary>
+    public RetentionPlan Plan(RetentionPolicy policy, IReadOnlySet<Guid> pinned, DateTimeOffset now, string? indexCachePath = null, CancellationToken ct = default)
     {
         if (_repo.Index.Count == 0)
         {
             _repo.LoadIndex(indexCachePath, null, ct);
         }
 
+        try
+        {
+            return PlanCore(policy, pinned, now, ct);
+        }
+        catch (Exception ex) when (ex is RezenException or CryptoException or IOException)
+        {
+            // A tree that cannot be read means the live set is unknown: never delete anything (DESIGN §20.2).
+            return RetentionPlan.Blocked(policy, pinned, now, "Backup data could not be fully read: " + ex.Message);
+        }
+    }
+
+    private RetentionPlan PlanCore(RetentionPolicy policy, IReadOnlySet<Guid> pinned, DateTimeOffset now, CancellationToken ct)
+    {
         var snapshots = _repo.LoadAllSnapshots();
+        if (snapshots.FirstOrDefault(s => s.Validity == SnapshotValidity.Invalid) is { } bad)
+        {
+            return RetentionPlan.Blocked(policy, pinned, now, $"Snapshot {bad.Folder.FolderName} failed verification; nothing is removed until it is resolved.");
+        }
+
         var valid = snapshots.Where(s => s.IsRestorable && s.Record is not null).ToList();
         var candidates = valid.Select(s => new RetentionCandidate(s.Record!.SnapshotId, s.Record.StartedUtc, pinned.Contains(s.Record.SnapshotId), true)).ToList();
         var deleteIds = RetentionCalculator.SelectForDeletion(candidates, policy, now).ToHashSet();
@@ -52,8 +89,9 @@ public sealed class RetentionRunner
             }
         }
 
-        // Packs written by interrupted (resumable) runs are kept so Resume can reuse them.
-        var protectedPacks = new HashSet<Guid>();
+        // Packs written by interrupted (resumable) runs are kept so Resume can reuse them, and every pack named in the
+        // commit record of a kept snapshot is kept as a second line of defence.
+        var protectedPacks = new HashSet<Guid>(keep.Where(s => s.Commit is not null).SelectMany(s => s.Commit!.Packs.Select(p => p.PackId)));
         foreach (var s in snapshots.Where(s => s.Validity == SnapshotValidity.Incomplete))
         {
             var jp = RepositoryLayout.JournalPath(s.Folder.FullPath);
@@ -95,7 +133,7 @@ public sealed class RetentionRunner
             }
         }
 
-        return new RetentionPlan(toDelete, packsToDelete, packsToRepack, reclaim);
+        return new RetentionPlan(toDelete, packsToDelete, packsToRepack, reclaim, policy, pinned, now);
     }
 
     private void CollectLive(ChunkId treeId, HashSet<ChunkId> live, CancellationToken ct)
@@ -122,9 +160,19 @@ public sealed class RetentionRunner
         }
     }
 
-    public RetentionResult Apply(RetentionPlan plan, string? indexCachePath, Action<string>? faultInjection = null, CancellationToken ct = default)
+    public RetentionResult Apply(RetentionPlan preview, string? indexCachePath, Action<string>? faultInjection = null, CancellationToken ct = default)
     {
         using var repoLock = RepositoryLock.Acquire(_repo.Layout, CryptoRandom.NewId());
+
+        // Re-plan under the lock against the drive as it is now (another process may have committed a backup).
+        _repo.Index.Reconcile(_repo.Layout, _repo.Keys, null, ct);
+        var plan = Plan(preview.Policy, preview.Pinned, preview.Now, indexCachePath, ct);
+        if (plan.IsBlocked)
+        {
+            _logger.LogWarning("Retention skipped: {Reason}", plan.BlockedReason);
+            return new RetentionResult([], 0, 0, 0);
+        }
+
         var deleted = new List<string>();
 
         // Phase 1: mark snapshots as being deleted (never offered for restore from now on).
