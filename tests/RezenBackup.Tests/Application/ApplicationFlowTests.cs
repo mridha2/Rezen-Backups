@@ -2,6 +2,7 @@ using RezenBackup.Application;
 using RezenBackup.Core;
 using RezenBackup.Core.Domain;
 using RezenBackup.Core.Policies;
+using RezenBackup.Crypto;
 using RezenBackup.RestoreEngine;
 
 namespace RezenBackup.Tests.Application;
@@ -342,6 +343,43 @@ public class ApplicationFlowTests
         f.App.Jobs.RemoveDestination(job.Id, second.Id);
         Assert.True(Directory.Exists(Path.Combine(drive2, "Rezen Backup"))); // nothing deleted on the drive
         Assert.Throws<RezenException>(() => f.App.Jobs.RemoveDestination(job.Id, f.App.Db.RepositoriesForJob(job.Id).Single().Id));
+        ks.Secret.Dispose();
+    }
+
+    /// <summary>Backup-only remembering stores no Root Secret and still lets scheduled backups run (DESIGN §9.5).</summary>
+    [Fact]
+    public async Task RememberBackupOnly_RunsScheduledBackups_WithoutStoringTheRootSecret()
+    {
+        using var f = new AppFixture();
+        var (job, ks) = Setup(f);
+        f.App.KeySets.SetRemember(ks.Info.Id, ks.Secret, remember: true, backupOnly: true);
+        Assert.DoesNotContain(f.Credentials.StoredValues, v => v.AsSpan().IndexOf(ks.Secret.Bytes) >= 0);
+        Assert.Null(f.App.KeySets.TryLoadRemembered(ks.Info.Id));
+
+        var run = await f.App.Backups.RunAsync(job.Id, RunTrigger.Scheduled);
+        Assert.Equal(RunOutcome.Success, run.Outcome);
+        Assert.Equal(SecurityStatus.EncryptedAndVerified, run.Security);
+
+        // A drive added later also gets a backup-only key.
+        var drive2 = Path.Combine(f.Root, "drive2");
+        Directory.CreateDirectory(drive2);
+        var second = f.App.Jobs.AddDestination(job.Id, drive2, ks.Secret);
+        using (var k = f.App.KeySets.TryLoadBackupOnly(ks.Info.Id, second.Id))
+        {
+            Assert.NotNull(k);
+            Assert.False(k!.CanReadContent);
+        }
+
+        // Switching to the full key stores the Root Secret instead and removes the backup-only keys.
+        f.App.KeySets.SetRemember(ks.Info.Id, ks.Secret, remember: true, backupOnly: false);
+        using (var full = f.App.KeySets.TryLoadRemembered(ks.Info.Id))
+        {
+            Assert.NotNull(full);
+        }
+
+        Assert.Null(f.App.KeySets.TryLoadBackupOnly(ks.Info.Id, second.Id));
+        f.App.KeySets.SetRemember(ks.Info.Id, null, remember: false);
+        Assert.DoesNotContain(f.Credentials.StoredValues, v => v.AsSpan().SequenceEqual(ks.Secret.Bytes));
         ks.Secret.Dispose();
     }
 }

@@ -170,6 +170,7 @@ public sealed class ImportService
             CreatedUtc = repo.Config.CreatedUtc,
         });
 
+        _app.KeySets.OnRepositoryCreated(info.KeySetId, repo.RepositoryId, secret);
         RebuildCatalog(job.Id, repo);
         _app.SecurityLog.Record(SecurityEvents.Import, job.Id, viaRecoveryKey ? "recovery key" : "password");
         return job;

@@ -14,9 +14,15 @@ internal sealed class InMemoryCredentialStore : ICredentialStore
 
     public bool Unavailable { get; set; }
 
+    public IReadOnlyCollection<byte[]> StoredValues => _items.Values;
+
     public void Save(Guid keySetId, RootSecret secret) => _items[keySetId] = secret.Bytes.ToArray();
 
-    public RootSecret? TryLoad(Guid keySetId) => !Unavailable && _items.TryGetValue(keySetId, out var b) ? RootSecret.FromBytes(b) : null;
+    public RootSecret? TryLoad(Guid keySetId) => !Unavailable && _items.TryGetValue(keySetId, out var b) && b.Length == RootSecret.Length ? RootSecret.FromBytes(b) : null;
+
+    public void SaveBytes(Guid id, ReadOnlySpan<byte> secret) => _items[id] = secret.ToArray();
+
+    public SecretBuffer? TryLoadBytes(Guid id) => !Unavailable && _items.TryGetValue(id, out var b) ? SecretBuffer.CopyFrom(b) : null;
 
     public bool Exists(Guid keySetId) => _items.ContainsKey(keySetId);
 

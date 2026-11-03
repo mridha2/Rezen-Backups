@@ -112,6 +112,7 @@ public sealed class JobService
         }, _app.Platform.Durable);
 
         _app.Db.UpsertJob(job);
+        _app.KeySets.OnRepositoryCreated(job.KeySetId, repo.RepositoryId, secret);
         _app.Db.UpsertRepository(new RepositoryRecord
         {
             Id = repo.RepositoryId,
@@ -245,6 +246,7 @@ public sealed class JobService
             CreatedUtc = DateTimeOffset.UtcNow,
         };
         _app.Db.UpsertRepository(record);
+        _app.KeySets.OnRepositoryCreated(job.KeySetId, record.Id, secret);
         return record;
     }
 

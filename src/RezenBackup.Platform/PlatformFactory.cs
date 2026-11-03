@@ -83,6 +83,10 @@ public static class PlatformFactory
 
         public RootSecret? TryLoad(Guid keySetId) => null;
 
+        public void SaveBytes(Guid id, ReadOnlySpan<byte> secret) => throw new PlatformNotSupportedException("Remembering keys is not supported on this platform.");
+
+        public SecretBuffer? TryLoadBytes(Guid id) => null;
+
         public bool Exists(Guid keySetId) => false;
 
         public void Delete(Guid keySetId)

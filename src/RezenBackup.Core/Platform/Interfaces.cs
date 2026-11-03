@@ -17,6 +17,12 @@ public interface ICredentialStore
     /// <summary>Returns null if no credential is stored or it cannot be decrypted.</summary>
     RootSecret? TryLoad(Guid keySetId);
 
+    /// <summary>Stores an arbitrary secret blob (used for backup-only repository keys).</summary>
+    void SaveBytes(Guid id, ReadOnlySpan<byte> secret);
+
+    /// <summary>Returns null if nothing is stored or it cannot be decrypted.</summary>
+    SecretBuffer? TryLoadBytes(Guid id);
+
     bool Exists(Guid keySetId);
 
     void Delete(Guid keySetId);

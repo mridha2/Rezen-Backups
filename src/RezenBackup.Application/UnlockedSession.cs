@@ -189,7 +189,7 @@ public sealed class UnlockedSession : IDisposable
 
     public string RevealRecoveryKey() => _app.KeySets.RevealRecoveryKey(Secret);
 
-    public void SetRemember(bool remember) => _app.KeySets.SetRemember(KeySetId, Secret, remember);
+    public void SetRemember(bool remember, bool backupOnly = true) => _app.KeySets.SetRemember(KeySetId, Secret, remember, backupOnly);
 
     /// <summary>A copy of the secret for handing a run to the background agent; the caller must dispose it.</summary>
     public RootSecret CloneSecret() => Secret.Clone();

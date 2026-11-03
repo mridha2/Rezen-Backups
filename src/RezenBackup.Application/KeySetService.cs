@@ -318,10 +318,15 @@ public sealed class KeySetService
         return RepositoriesOfKeySet(keySetId).Count(r => r.Record.PasswordGeneration < info.PasswordGeneration);
     }
 
-    /// <summary>Enables or disables "Remember password on this PC" (DESIGN §9).</summary>
-    public void SetRemember(Guid keySetId, RootSecret? secret, bool remember)
+    /// <summary>
+    /// Enables or disables "Remember on this PC" (DESIGN §9). With <paramref name="backupOnly"/> (the default), only
+    /// backup-only repository keys are stored: scheduled backups can add new backups but cannot decrypt stored file
+    /// contents. Otherwise the Root Secret itself is stored (it can also restore).
+    /// </summary>
+    public void SetRemember(Guid keySetId, RootSecret? secret, bool remember, bool backupOnly = true)
     {
         var info = _app.Db.KeySet(keySetId) ?? throw new RezenException(ErrorCode.InvalidConfiguration, "Unknown key set.");
+        var repositories = RepositoriesOfKeySet(keySetId).Select(r => r.Record).ToList();
         if (remember)
         {
             if (secret is null)
@@ -334,23 +339,62 @@ public sealed class KeySetService
                 throw new RezenException(ErrorCode.InvalidConfiguration, "Remembering the password is not supported on this computer.", null, null);
             }
 
-            _app.Platform.Credentials.Save(keySetId, secret);
-            _app.SecurityLog.Record(SecurityEvents.RememberEnabled, null, _app.Platform.Credentials.MechanismName);
+            if (backupOnly)
+            {
+                foreach (var repo in repositories)
+                {
+                    SaveBackupOnlyKey(repo.Id, secret);
+                }
+
+                _app.Platform.Credentials.Delete(keySetId);
+            }
+            else
+            {
+                _app.Platform.Credentials.Save(keySetId, secret);
+                foreach (var repo in repositories)
+                {
+                    _app.Platform.Credentials.Delete(repo.Id);
+                }
+            }
+
+            _app.SecurityLog.Record(SecurityEvents.RememberEnabled, null, (backupOnly ? "backup-only key; " : "full key; ") + _app.Platform.Credentials.MechanismName);
         }
         else
         {
             _app.Platform.Credentials.Delete(keySetId);
+            foreach (var repo in repositories)
+            {
+                _app.Platform.Credentials.Delete(repo.Id);
+            }
+
             _app.SecurityLog.Record(SecurityEvents.RememberDisabled);
         }
 
-        _app.Db.UpsertKeySet(info with { RememberOnThisPc = remember });
+        _app.Db.UpsertKeySet(info with { RememberOnThisPc = remember, RememberBackupOnly = remember && backupOnly });
     }
 
-    /// <summary>Loads the remembered Root Secret for scheduled backups; null if not remembered or unavailable.</summary>
+    private void SaveBackupOnlyKey(Guid repositoryId, RootSecret secret)
+    {
+        using var keys = secret.DeriveRepositoryKeys(repositoryId);
+        using var blob = keys.ExportBackupOnly();
+        _app.Platform.Credentials.SaveBytes(repositoryId, blob.ReadOnlySpan);
+    }
+
+    /// <summary>Called when a repository is added to a key set (new job, extra drive, import) while remembering.</summary>
+    public void OnRepositoryCreated(Guid keySetId, Guid repositoryId, RootSecret secret)
+    {
+        var info = _app.Db.KeySet(keySetId);
+        if (info is { RememberOnThisPc: true, RememberBackupOnly: true } && _app.Platform.Credentials.IsSupported)
+        {
+            SaveBackupOnlyKey(repositoryId, secret);
+        }
+    }
+
+    /// <summary>Loads the remembered Root Secret for scheduled backups; null if not remembered (or backup-only) or unavailable.</summary>
     public RootSecret? TryLoadRemembered(Guid keySetId)
     {
         var info = _app.Db.KeySet(keySetId);
-        if (info is not { RememberOnThisPc: true })
+        if (info is not { RememberOnThisPc: true, RememberBackupOnly: false })
         {
             return null;
         }
@@ -370,6 +414,40 @@ public sealed class KeySetService
         }
 
         return secret;
+    }
+
+    /// <summary>Loads the remembered backup-only key of one repository; null if not remembered that way or unavailable.</summary>
+    public RepositoryKeys? TryLoadBackupOnly(Guid keySetId, Guid repositoryId)
+    {
+        var info = _app.Db.KeySet(keySetId);
+        if (info is not { RememberOnThisPc: true, RememberBackupOnly: true })
+        {
+            return null;
+        }
+
+        using var blob = _app.Platform.Credentials.TryLoadBytes(repositoryId);
+        if (blob is null)
+        {
+            _app.SecurityLog.Record(SecurityEvents.CredentialUnavailable);
+            return null;
+        }
+
+        try
+        {
+            var keys = RepositoryKeys.FromBackupOnly(blob.ReadOnlySpan);
+            if (keys.RepositoryId != repositoryId)
+            {
+                keys.Dispose();
+                return null;
+            }
+
+            return keys;
+        }
+        catch (CryptoException)
+        {
+            _app.SecurityLog.Record(SecurityEvents.CredentialUnavailable);
+            return null;
+        }
     }
 
     public string RevealRecoveryKey(RootSecret secret)

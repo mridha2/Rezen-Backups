@@ -39,16 +39,17 @@ public sealed partial class AppDatabase
 
     public void UpsertKeySet(KeySetInfo k) => Exec(
         """
-        INSERT INTO key_sets(id, display_name, created_utc, password_generation, recovery_confirmed, remember_on_pc, kdf_description)
-        VALUES($id,$n,$c,$g,$r,$m,$k)
+        INSERT INTO key_sets(id, display_name, created_utc, password_generation, recovery_confirmed, remember_on_pc, kdf_description, remember_backup_only)
+        VALUES($id,$n,$c,$g,$r,$m,$k,$b)
         ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, password_generation=excluded.password_generation,
-            recovery_confirmed=excluded.recovery_confirmed, remember_on_pc=excluded.remember_on_pc, kdf_description=excluded.kdf_description
+            recovery_confirmed=excluded.recovery_confirmed, remember_on_pc=excluded.remember_on_pc, kdf_description=excluded.kdf_description,
+            remember_backup_only=excluded.remember_backup_only
         """,
         ("$id", k.Id.ToString()), ("$n", k.DisplayName), ("$c", Ts(k.CreatedUtc)), ("$g", k.PasswordGeneration),
-        ("$r", k.RecoveryKeyConfirmed ? 1 : 0), ("$m", k.RememberOnThisPc ? 1 : 0), ("$k", k.KdfDescription));
+        ("$r", k.RecoveryKeyConfirmed ? 1 : 0), ("$m", k.RememberOnThisPc ? 1 : 0), ("$k", k.KdfDescription), ("$b", k.RememberBackupOnly ? 1 : 0));
 
     public IReadOnlyList<KeySetInfo> KeySets() => Query(
-        "SELECT id, display_name, created_utc, password_generation, recovery_confirmed, remember_on_pc, kdf_description FROM key_sets ORDER BY created_utc",
+        "SELECT id, display_name, created_utc, password_generation, recovery_confirmed, remember_on_pc, kdf_description, remember_backup_only FROM key_sets ORDER BY created_utc",
         r => new KeySetInfo
         {
             Id = G(r, 0),
@@ -58,6 +59,7 @@ public sealed partial class AppDatabase
             RecoveryKeyConfirmed = r.GetInt32(4) != 0,
             RememberOnThisPc = r.GetInt32(5) != 0,
             KdfDescription = r.IsDBNull(6) ? null : r.GetString(6),
+            RememberBackupOnly = r.GetInt32(7) != 0,
         });
 
     public KeySetInfo? KeySet(Guid id) => KeySets().FirstOrDefault(k => k.Id == id);

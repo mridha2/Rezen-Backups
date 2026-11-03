@@ -21,27 +21,30 @@ public sealed class KeychainCredentialStore : ICredentialStore
 
     private static string Account(Guid keySetId) => "keyset-" + keySetId.ToString("N");
 
-    public void Save(Guid keySetId, RootSecret secret)
+    public void Save(Guid keySetId, RootSecret secret) => SaveBytes(keySetId, secret.Bytes);
+
+    public void SaveBytes(Guid id, ReadOnlySpan<byte> secret)
     {
-        var account = Account(keySetId);
-        var data = Marshal.AllocHGlobal(RootSecret.Length);
+        var account = Account(id);
+        int length = secret.Length;
+        var data = Marshal.AllocHGlobal(length);
         try
         {
             unsafe
             {
-                secret.Bytes.CopyTo(new Span<byte>((void*)data, RootSecret.Length));
+                secret.CopyTo(new Span<byte>((void*)data, length));
             }
 
             int rc = MacNative.SecKeychainFindGenericPassword(0, (uint)Service.Length, Service, (uint)account.Length, account, out _, out nint existing, out nint item);
             if (rc == 0)
             {
                 MacNative.SecKeychainItemFreeContent(0, existing);
-                rc = MacNative.SecKeychainItemModifyAttributesAndData(item, 0, RootSecret.Length, data);
+                rc = MacNative.SecKeychainItemModifyAttributesAndData(item, 0, (uint)length, data);
                 MacNative.CFRelease(item);
             }
             else
             {
-                rc = MacNative.SecKeychainAddGenericPassword(0, (uint)Service.Length, Service, (uint)account.Length, account, RootSecret.Length, data, out nint newItem);
+                rc = MacNative.SecKeychainAddGenericPassword(0, (uint)Service.Length, Service, (uint)account.Length, account, (uint)length, data, out nint newItem);
                 if (newItem != 0)
                 {
                     MacNative.CFRelease(newItem);
@@ -57,7 +60,7 @@ public sealed class KeychainCredentialStore : ICredentialStore
         {
             unsafe
             {
-                new Span<byte>((void*)data, RootSecret.Length).Clear();
+                new Span<byte>((void*)data, length).Clear();
             }
 
             Marshal.FreeHGlobal(data);
@@ -66,7 +69,13 @@ public sealed class KeychainCredentialStore : ICredentialStore
 
     public RootSecret? TryLoad(Guid keySetId)
     {
-        var account = Account(keySetId);
+        using var bytes = TryLoadBytes(keySetId);
+        return bytes is { Length: RootSecret.Length } ? RootSecret.FromBytes(bytes.ReadOnlySpan) : null;
+    }
+
+    public SecretBuffer? TryLoadBytes(Guid id)
+    {
+        var account = Account(id);
         int rc = MacNative.SecKeychainFindGenericPassword(0, (uint)Service.Length, Service, (uint)account.Length, account, out uint len, out nint data, out nint item);
         if (rc != 0)
         {
@@ -75,14 +84,14 @@ public sealed class KeychainCredentialStore : ICredentialStore
 
         try
         {
-            if (len != RootSecret.Length)
+            if (len == 0 || len > 64 * 1024)
             {
                 return null;
             }
 
             unsafe
             {
-                return RootSecret.FromBytes(new ReadOnlySpan<byte>((void*)data, (int)len));
+                return SecretBuffer.CopyFrom(new ReadOnlySpan<byte>((void*)data, (int)len));
             }
         }
         finally

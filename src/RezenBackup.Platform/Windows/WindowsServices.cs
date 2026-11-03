@@ -23,16 +23,18 @@ public sealed class DpapiCredentialStore(string directory) : ICredentialStore
 
     private static byte[] Entropy(Guid id) => [.. EntropyPrefix, .. id.ToByteArray()];
 
-    public void Save(Guid keySetId, RootSecret secret)
+    public void Save(Guid keySetId, RootSecret secret) => SaveBytes(keySetId, secret.Bytes);
+
+    public void SaveBytes(Guid id, ReadOnlySpan<byte> secret)
     {
         Directory.CreateDirectory(directory);
-        var plain = secret.Bytes.ToArray();
+        var plain = secret.ToArray();
         try
         {
-            var protectedBytes = ProtectedData.Protect(plain, Entropy(keySetId), DataProtectionScope.CurrentUser);
-            var tmp = PathFor(keySetId) + ".tmp";
+            var protectedBytes = ProtectedData.Protect(plain, Entropy(id), DataProtectionScope.CurrentUser);
+            var tmp = PathFor(id) + ".tmp";
             File.WriteAllBytes(tmp, protectedBytes);
-            File.Move(tmp, PathFor(keySetId), overwrite: true);
+            File.Move(tmp, PathFor(id), overwrite: true);
         }
         finally
         {
@@ -42,7 +44,13 @@ public sealed class DpapiCredentialStore(string directory) : ICredentialStore
 
     public RootSecret? TryLoad(Guid keySetId)
     {
-        var path = PathFor(keySetId);
+        using var bytes = TryLoadBytes(keySetId);
+        return bytes is { Length: RootSecret.Length } ? RootSecret.FromBytes(bytes.ReadOnlySpan) : null;
+    }
+
+    public SecretBuffer? TryLoadBytes(Guid id)
+    {
+        var path = PathFor(id);
         if (!File.Exists(path))
         {
             return null;
@@ -51,8 +59,8 @@ public sealed class DpapiCredentialStore(string directory) : ICredentialStore
         byte[]? plain = null;
         try
         {
-            plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy(keySetId), DataProtectionScope.CurrentUser);
-            return plain.Length == RootSecret.Length ? RootSecret.FromBytes(plain) : null;
+            plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy(id), DataProtectionScope.CurrentUser);
+            return plain.Length == 0 ? null : SecretBuffer.CopyFrom(plain);
         }
         catch (CryptographicException)
         {

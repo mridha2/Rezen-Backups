@@ -18,6 +18,12 @@ public sealed record KeySetInfo
 
     public bool RememberOnThisPc { get; init; }
 
+    /// <summary>
+    /// When remembering, store only backup-only keys: scheduled backups can add new backups but cannot decrypt stored
+    /// file contents (DESIGN §9.5). Default for new setups.
+    /// </summary>
+    public bool RememberBackupOnly { get; init; }
+
     public string? KdfDescription { get; init; }
 }
 

@@ -177,7 +177,8 @@ public sealed class BackupService
             }
 
             secret ??= _app.KeySets.TryLoadRemembered(job.KeySetId);
-            if (secret is null)
+            var backupOnlyKeys = secret is null ? _app.KeySets.TryLoadBackupOnly(job.KeySetId, t.Record.Id) : null;
+            if (secret is null && backupOnlyKeys is null)
             {
                 _app.Platform.Notifier.Notify("Backup Locked", $"Enter your password to back up \"{job.Name}\".", NotificationKind.Warning);
                 return Finish(row with { Outcome = RunOutcome.WaitingForPassword, Security = SecurityStatus.BackupLocked, Message = UserMessages.For(ErrorCode.KeyUnavailable) });
@@ -186,11 +187,15 @@ public sealed class BackupService
             var repoPath = t.Path;
             var repoRecord = t.Record;
             _app.Db.UpsertRun(row);
-            using var repo = Repository.Open(repoPath, secret, _app.Platform.Durable);
+
+            // With a backup-only key this run can add a verified backup but cannot read stored contents (DESIGN §9.5).
+            using var repo = secret is not null
+                ? Repository.Open(repoPath, secret, _app.Platform.Durable)
+                : Repository.OpenBackupOnly(repoPath, backupOnlyKeys!, _app.Platform.Durable);
 
             // Finish a password change that happened while this drive was disconnected (DESIGN §8.2).
             var keySet = _app.Db.KeySet(job.KeySetId);
-            if (keySet is not null && repoRecord.PasswordGeneration < keySet.PasswordGeneration)
+            if (secret is not null && keySet is not null && repoRecord.PasswordGeneration < keySet.PasswordGeneration)
             {
                 _app.KeySets.ApplyKeyFileUpdate(repoRecord, repoPath, secret);
             }

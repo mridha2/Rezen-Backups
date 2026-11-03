@@ -9,7 +9,7 @@ namespace RezenBackup.Database;
 /// </summary>
 public sealed partial class AppDatabase : IDisposable
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private readonly string _connectionString;
     private readonly object _gate = new();
     private SqliteConnection? _connection;
@@ -121,28 +121,28 @@ public sealed partial class AppDatabase : IDisposable
     {
         Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);");
         long current = Scalar<long?>("SELECT MAX(version) FROM schema_version;") ?? 0;
-        if (current >= SchemaVersion)
+        var steps = new[] { Schema.V1, Schema.V2 };
+        for (int version = (int)current + 1; version <= SchemaVersion; version++)
         {
-            return;
-        }
+            using var tx = _connection!.BeginTransaction();
+            foreach (var sql in steps[version - 1])
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = sql;
+                cmd.ExecuteNonQuery();
+            }
 
-        using var tx = _connection!.BeginTransaction();
-        foreach (var sql in Schema.V1)
-        {
-            using var cmd = _connection.CreateCommand();
-            cmd.Transaction = tx;
-            cmd.CommandText = sql;
-            cmd.ExecuteNonQuery();
-        }
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO schema_version(version) VALUES ($v);";
+                cmd.Parameters.AddWithValue("$v", version);
+                cmd.ExecuteNonQuery();
+            }
 
-        using (var cmd = _connection.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = "INSERT INTO schema_version(version) VALUES (1);";
-            cmd.ExecuteNonQuery();
+            tx.Commit();
         }
-
-        tx.Commit();
     }
 
     internal int Exec(string sql, params (string Name, object? Value)[] args)
@@ -222,6 +222,12 @@ public sealed partial class AppDatabase : IDisposable
 
 internal static class Schema
 {
+    /// <summary>v2: remembered key can be backup-only (DESIGN §9.5).</summary>
+    public static readonly string[] V2 =
+    [
+        "ALTER TABLE key_sets ADD COLUMN remember_backup_only INTEGER NOT NULL DEFAULT 0;",
+    ];
+
     public static readonly string[] V1 =
     [
         """
