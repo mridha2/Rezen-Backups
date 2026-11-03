@@ -55,7 +55,7 @@
         "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
       }
     },
-    "net10.0/osx-arm64": {
+    "net10.0/win-x64": {
       "libsodium": {
         "type": "CentralTransitive",
         "requested": "[1.0.21, )",
