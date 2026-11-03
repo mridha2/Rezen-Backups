@@ -25,7 +25,7 @@ public class PortableFileMetadataProvider : IFileMetadataProvider
 /// <summary>Reads files in place (no point-in-time snapshot). Used on macOS and when VSS is unavailable.</summary>
 public sealed class LiveSourceView : ISourceView
 {
-    public bool IsPointInTime => false;
+    public bool IsPointInTimeFor(string originalPath) => false;
 
     public string MapForReading(string originalPath) => originalPath;
 

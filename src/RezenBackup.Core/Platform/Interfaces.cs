@@ -58,8 +58,8 @@ public interface IFileMetadataProvider
 /// <summary>A consistent (point-in-time where supported) view of the sources being backed up.</summary>
 public interface ISourceView : IDisposable
 {
-    /// <summary>True if reading from a point-in-time snapshot (VSS).</summary>
-    bool IsPointInTime { get; }
+    /// <summary>True if this path is read from a point-in-time snapshot (VSS) rather than the live file.</summary>
+    bool IsPointInTimeFor(string originalPath);
 
     /// <summary>Maps an original absolute path to the path that should actually be read.</summary>
     string MapForReading(string originalPath);

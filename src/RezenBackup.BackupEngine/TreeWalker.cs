@@ -391,7 +391,10 @@ internal sealed class TreeWalker
         SourceFileInfo info;
         try
         {
-            info = _meta.GetInfo(file.FullName, file);
+            // With a point-in-time view, metadata must come from the same snapshot as the content that is read.
+            info = _view.IsPointInTimeFor(file.FullName)
+                ? _meta.GetInfo(_view.MapForReading(file.FullName))
+                : _meta.GetInfo(file.FullName, file);
         }
         catch (FileNotFoundException)
         {
@@ -491,6 +494,7 @@ internal sealed class TreeWalker
     private ReadOutcome ReadFile(FileInfo file, SourceFileInfo before)
     {
         var readPath = _view.MapForReading(file.FullName);
+        bool pointInTime = _view.IsPointInTimeFor(file.FullName);
         for (int attempt = 0; ; attempt++)
         {
             var chunks = new List<ChunkId>();
@@ -545,14 +549,14 @@ internal sealed class TreeWalker
             SourceFileInfo after;
             try
             {
-                after = _meta.GetInfo(file.FullName);
+                after = _meta.GetInfo(pointInTime ? readPath : file.FullName);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 return new ReadOutcome(null, IssueKind.NotFound, ex.Message);
             }
 
-            bool stable = _view.IsPointInTime || (after.Size == size && after.LastWriteUtc == before.LastWriteUtc && after.ChangeTimeUtc == before.ChangeTimeUtc && before.Size == size);
+            bool stable = (pointInTime && after.Size == size && after.LastWriteUtc == before.LastWriteUtc) || (after.Size == size && after.LastWriteUtc == before.LastWriteUtc && after.ChangeTimeUtc == before.ChangeTimeUtc && before.Size == size);
             if (!stable && attempt < _options.MaxRetriesOnChange)
             {
                 _progress.BytesDone = bytesBefore;

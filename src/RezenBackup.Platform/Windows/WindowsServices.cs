@@ -172,7 +172,9 @@ public sealed class WindowsFileMetadataProvider : PortableFileMetadataProvider
 
         if (WinNative.GetFileInformationByHandle(handle, out var byHandle))
         {
-            fileId = string.Create(CultureInfo.InvariantCulture, $"{byHandle.VolumeSerialNumber:x8}-{byHandle.FileIndexHigh:x8}{byHandle.FileIndexLow:x8}");
+            // File index only: a VSS shadow copy has a different volume serial number but keeps file indexes,
+            // so the ID stays stable whether a file is read live or from a shadow copy.
+            fileId = string.Create(CultureInfo.InvariantCulture, $"{byHandle.FileIndexHigh:x8}{byHandle.FileIndexLow:x8}");
         }
 
         return info with { ChangeTimeUtc = change, FileId = fileId };

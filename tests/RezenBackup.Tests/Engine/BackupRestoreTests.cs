@@ -515,4 +515,46 @@ public class ReviewRegressionTests
         Assert.False(report.IntegrityFailure);
         Assert.Equal(1, report.FilesRestored);
     }
+
+    private sealed class FakeShadowProvider(string liveRoot, string shadowRoot) : Core.Platform.ISourceSnapshotProvider
+    {
+        public Task<Core.Platform.ISourceView> CreateViewAsync(IReadOnlyList<string> sourceRoots, CancellationToken cancellationToken) =>
+            Task.FromResult<Core.Platform.ISourceView>(new View(liveRoot, shadowRoot));
+
+        private sealed class View(string live, string shadow) : Core.Platform.ISourceView
+        {
+            public bool IsPointInTimeFor(string originalPath) => originalPath.StartsWith(live, StringComparison.Ordinal);
+
+            public string MapForReading(string originalPath) => IsPointInTimeFor(originalPath) ? shadow + originalPath[live.Length..] : originalPath;
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    /// <summary>Metadata must come from the same point-in-time view as the content (review finding 3).</summary>
+    [Fact]
+    public async Task PointInTimeView_RecordsShadowMetadata_SoLaterChangesAreNotSkipped()
+    {
+        using var t = new TestRepo();
+        var shadow = Path.Combine(t.Root, "shadow");
+        Directory.CreateDirectory(shadow);
+        File.WriteAllText(Path.Combine(shadow, "doc.txt"), "OLD");
+        File.SetLastWriteTimeUtc(Path.Combine(shadow, "doc.txt"), new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var live = t.WriteFile("doc.txt", "NEW"); // edited after the shadow copy was taken, same size
+
+        var runner = new BackupRunner(t.Repo, snapshots: new FakeShadowProvider(t.Source, shadow));
+        var first = await runner.RunAsync(t.Options());
+        var second = await t.BackupAsync(t.Options() with { SnapshotLocalTime = DateTime.Now.AddSeconds(5) }); // live view
+
+        t.Reopen();
+        var target1 = Path.Combine(t.Root, "r1");
+        var target2 = Path.Combine(t.Root, "r2");
+        await t.RestoreAllAsync(first.SnapshotId, target1);
+        await t.RestoreAllAsync(second.SnapshotId, target2);
+        Assert.Equal("OLD", File.ReadAllText(Path.Combine(target1, "Company Documents", "doc.txt")));
+        Assert.Equal("NEW", File.ReadAllText(Path.Combine(target2, "Company Documents", "doc.txt")));
+        _ = live;
+    }
 }

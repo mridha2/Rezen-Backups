@@ -79,7 +79,8 @@ public sealed class VssSourceSnapshotProvider(ILogger logger) : ISourceSnapshotP
 
     private sealed class VssView(NamedPipeClientStream pipe, StreamReader reader, StreamWriter writer, Dictionary<string, (string Device, string ShadowId)> mapping, ILogger logger) : ISourceView
     {
-        public bool IsPointInTime => true;
+        public bool IsPointInTimeFor(string originalPath) =>
+            Path.GetPathRoot(originalPath) is { } root && mapping.ContainsKey(root);
 
         public string MapForReading(string originalPath)
         {
