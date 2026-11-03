@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RezenBackup.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RezenBackup.BackupEngine\RezenBackup.BackupEngine.csproj" />
+    <ProjectReference Include="..\RezenBackup.RestoreEngine\RezenBackup.RestoreEngine.csproj" />
+    <ProjectReference Include="..\RezenBackup.Database\RezenBackup.Database.csproj" />
+    <ProjectReference Include="..\RezenBackup.Logging\RezenBackup.Logging.csproj" />
+    <ProjectReference Include="..\RezenBackup.Security\RezenBackup.Security.csproj" />
+    <ProjectReference Include="..\RezenBackup.Platform\RezenBackup.Platform.csproj" />
+    <ProjectReference Include="..\RezenBackup.Scheduler\RezenBackup.Scheduler.csproj" />
+    <ProjectReference Include="..\RezenBackup.DriveMonitor\RezenBackup.DriveMonitor.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RezenBackup.Tests" />
+  </ItemGroup>
+</Project>
