@@ -73,7 +73,9 @@ public sealed class RepositoryKeys : IDisposable
     private readonly SecretBuffer _treeId;
     private readonly SecretBuffer _cdcSeed;
     private readonly SecretBuffer _check;
-    private readonly Dictionary<string, SecretBuffer> _ownObjectKeys = [];
+    // 32-byte pinned arrays (wiped when forgotten): one locked sodium allocation per pack would exhaust locked memory
+    // on large first backups.
+    private readonly Dictionary<string, byte[]> _ownObjectKeys = [];
     private readonly object _ownGate = new();
 
     private RepositoryKeys(Guid repositoryId, SecretBuffer master)
@@ -154,8 +156,8 @@ public sealed class RepositoryKeys : IDisposable
         using var ephemeral = SecretBuffer.Random(32);
         var ephemeralPublic = X25519.PublicFromPrivate(ephemeral.ReadOnlySpan);
         var header = new ObjectHeader(type, RepositoryId, ephemeralPublic, ObjectHeader.DefaultSegmentSize, ObjectHeader.AlgorithmX25519Aes256GcmStream);
-        var key = new SecretBuffer(32);
-        DeriveAsymmetricObjectKey(ephemeral.ReadOnlySpan, _contentPublic, header, key.Span);
+        var key = SecureMemory.AllocatePinned(32);
+        DeriveAsymmetricObjectKey(ephemeral.ReadOnlySpan, _contentPublic, header, key);
         lock (_ownGate)
         {
             _ownObjectKeys[Convert.ToHexString(ephemeralPublic)] = key;
@@ -174,7 +176,7 @@ public sealed class RepositoryKeys : IDisposable
         {
             foreach (var k in _ownObjectKeys.Values)
             {
-                k.Dispose();
+                CryptographicOperations.ZeroMemory(k);
             }
 
             _ownObjectKeys.Clear();
@@ -199,7 +201,7 @@ public sealed class RepositoryKeys : IDisposable
         {
             if (_ownObjectKeys.TryGetValue(Convert.ToHexString(header.ObjectSalt), out var own))
             {
-                own.ReadOnlySpan.CopyTo(destination);
+                own.CopyTo(destination);
                 return;
             }
         }
@@ -377,7 +379,7 @@ public sealed class RepositoryKeys : IDisposable
         {
             foreach (var k in _ownObjectKeys.Values)
             {
-                k.Dispose();
+                CryptographicOperations.ZeroMemory(k);
             }
 
             _ownObjectKeys.Clear();

@@ -21,6 +21,9 @@ public sealed class ChunkIndex
 
     public int Count => _entries.Count;
 
+    /// <summary>Data packs the last <see cref="Reconcile"/> could not index because the key is backup-only.</summary>
+    public int SkippedUnreadable { get; private set; }
+
     public IReadOnlyDictionary<Guid, PackRecord> Packs => _packs;
 
     public bool Contains(ChunkId id) => _entries.ContainsKey(id);
@@ -135,11 +138,19 @@ public sealed class ChunkIndex
         }
 
         int read = 0;
+        SkippedUnreadable = 0;
         foreach (var (id, (packId, kind, path)) in onDisk)
         {
             ct.ThrowIfCancellationRequested();
             if (_packs.ContainsKey(id))
             {
+                continue;
+            }
+
+            if (kind == PackKind.Data && !keys.CanReadContent)
+            {
+                // A backup-only key cannot read data packs it did not write; don't re-read them on every run.
+                SkippedUnreadable++;
                 continue;
             }
 

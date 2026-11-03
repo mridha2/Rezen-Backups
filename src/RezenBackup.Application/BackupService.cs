@@ -215,6 +215,10 @@ public sealed class BackupService
                 ResumeFolderName = resumeFolder,
             };
             var runner = new BackupRunner(repo, _app.Platform.Metadata, _app.Platform.Snapshots, _app.Loggers.CreateLogger("Backup"));
+            if (!repo.Keys.CanReadContent && !File.Exists(options.IndexCachePath))
+            {
+                _app.Logger.LogWarning("Backup-only run without a local index for repository {Repo}: data written elsewhere cannot be reused, so this run may store duplicates. A backup with your password rebuilds the index.", repo.RepositoryId);
+            }
             _app.Logger.LogInformation("Backup of job {Job} started ({Trigger}, {Method})", job.Id, run.Trigger, method);
             var result = await runner.RunAsync(options, new SyncProgress(p => run.Progress = p with { Paused = run.Pause.IsPaused }), run.Pause, ct).ConfigureAwait(false);
 
