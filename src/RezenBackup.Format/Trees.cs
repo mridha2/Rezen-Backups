@@ -144,7 +144,9 @@ public sealed class TreeNode
                 r.SkipValue();
                 r.ReadEndArray();
 
-                if (name.Length == 0 || name.Contains('/') || name is "." or ".." || (OperatingSystem.IsWindows() && name.Contains('\\')))
+                // Platform-neutral validation; names that are legal on one OS but not another (e.g. "a\\b" from macOS on
+                // Windows) are renamed at restore time instead of failing the whole folder.
+                if (name.Length == 0 || name.Contains('/') || name.Contains('\0') || name is "." or "..")
                 {
                     throw new CryptoException(CryptoError.InvalidFormat, "Invalid entry name in tree.");
                 }
