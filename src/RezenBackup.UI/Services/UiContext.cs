@@ -24,6 +24,14 @@ public sealed class UiContext : IDisposable
         Agent = new AgentClient(app.Paths);
         Locks = new SessionLockManager { Mode = app.Settings.AutoLock, LockWhenSystemLocks = app.Settings.LockWhenSystemLocks };
         Locks.LockRequested += reason => Dispatcher.UIThread.Post(() => Lock(reason));
+        Locks.BusyEnded += () => Dispatcher.UIThread.Post(() =>
+        {
+            if (_pendingLockReason is { } pending)
+            {
+                _pendingLockReason = null;
+                Lock(pending);
+            }
+        });
         _lockTimer = new DispatcherTimer(TimeSpan.FromSeconds(10), DispatcherPriority.Background, (_, _) => CheckLock());
         _lockTimer.Start();
         _lastShow = UiSignals.Read(app.Db, UiSignals.Show);
@@ -136,10 +144,22 @@ public sealed class UiContext : IDisposable
         }
     }
 
+    private string? _pendingLockReason;
+
+    /// <summary>True when a lock was requested while an operation was using the keys; it happens when that operation ends.</summary>
+    public bool LockPending => _pendingLockReason is not null;
+
     public void Lock(string reason)
     {
         if (Session is null)
         {
+            return;
+        }
+
+        if (Locks.IsBusy)
+        {
+            // A restore or verification is using the keys on another thread: never free them underneath it.
+            _pendingLockReason = reason;
             return;
         }
 

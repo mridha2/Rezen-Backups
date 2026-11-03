@@ -242,6 +242,7 @@ public sealed partial class RestoreViewModel : PageViewModel
         Message = null;
         IsBusy = true;
         BusyText = "Reading encrypted backup catalog…";
+        using var busy = Ui.Locks.BeginBusy();
         try
         {
             var jobId = SelectedJob.Id;

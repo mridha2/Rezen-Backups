@@ -103,6 +103,7 @@ public sealed partial class HistoryViewModel : PageViewModel
             return;
         }
 
+        using var busy = Ui.Locks.BeginBusy();
         try
         {
             var issues = await Task.Run(() => session.RunIssues(row.Run.JobId, row.Run.Id));

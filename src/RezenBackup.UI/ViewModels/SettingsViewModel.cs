@@ -175,6 +175,7 @@ public sealed partial class SettingsViewModel : PageViewModel
             return;
         }
 
+        using var busy = Ui.Locks.BeginBusy();
         try
         {
             var id = SelectedJob.Id;

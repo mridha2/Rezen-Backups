@@ -269,4 +269,26 @@ public class UiFlowTests
         f.App.SaveSettings(f.App.Settings with { SetupCompleted = true });
         return job;
     }
+
+    /// <summary>A lock request during a key-using operation waits for it instead of freeing keys underneath it.</summary>
+    [AvaloniaFact]
+    public async Task Lock_IsDeferredWhileBusy()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        await CreateJobWithBackupAsync(f);
+        var (window, _) = Open(f);
+        DialogDriver.Unlock(UiFixture.Password);
+        var unlock = f.Ui.EnsureUnlockedAsync("test");
+        await UiFixture.WaitUntil(() => unlock.IsCompleted);
+        Assert.True(f.Ui.IsUnlocked);
+
+        var busy = f.Ui.Locks.BeginBusy();
+        f.Ui.Lock("system locked");
+        Assert.True(f.Ui.IsUnlocked);
+        Assert.True(f.Ui.LockPending);
+        busy.Dispose();
+        await UiFixture.WaitUntil(() => !f.Ui.IsUnlocked);
+        window.Close();
+    }
 }

@@ -26,14 +26,6 @@
         "resolved": "1.0.21",
         "contentHash": "mdyeeMBfV0OfB6BDKriUZmEAL2Jm8FR1ic/IBpxkflv4kyV8lXgplzQ9J9cUtjR2jl5Fvc2mxmSloXoZeAlcPA=="
       }
-    },
-    "net10.0/win-x64": {
-      "libsodium": {
-        "type": "CentralTransitive",
-        "requested": "[1.0.21, )",
-        "resolved": "1.0.21",
-        "contentHash": "mdyeeMBfV0OfB6BDKriUZmEAL2Jm8FR1ic/IBpxkflv4kyV8lXgplzQ9J9cUtjR2jl5Fvc2mxmSloXoZeAlcPA=="
-      }
     }
   }
 }

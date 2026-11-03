@@ -28,6 +28,12 @@ public sealed class SessionLockManager
     /// <summary>Raised with a reason when the application must lock.</summary>
     public event Action<string>? LockRequested;
 
+    /// <summary>Raised when the last long operation that uses the unlocked keys has finished.</summary>
+    public event Action? BusyEnded;
+
+    /// <summary>True while a restore, verification or similar operation is using the unlocked keys.</summary>
+    public bool IsBusy => Volatile.Read(ref _busy) > 0;
+
     public void MarkUnlocked()
     {
         lock (_gate)
@@ -111,7 +117,11 @@ public sealed class SessionLockManager
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                Interlocked.Decrement(ref owner._busy);
+                if (Interlocked.Decrement(ref owner._busy) == 0)
+                {
+                    owner.BusyEnded?.Invoke();
+                }
+
                 owner.RegisterActivity();
             }
         }

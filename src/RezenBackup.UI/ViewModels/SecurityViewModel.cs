@@ -207,6 +207,7 @@ public sealed partial class SecurityViewModel : PageViewModel
 
         IsBusy = true;
         BusyText = "Updating key files…";
+        using var busy = Ui.Locks.BeginBusy();
         try
         {
             var result = await Task.Run(() => session.ChangePassword(newPassword));
