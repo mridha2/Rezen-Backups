@@ -126,6 +126,13 @@ public sealed class KeySetService
         // Local copy missing, damaged, or older than the drive's (password changed elsewhere): try connected drives.
         foreach (var repoPath in ConnectedRepositoryPaths(keySetId))
         {
+            // A drive whose key files are older than this computer's (a password change is still pending for it) must
+            // not unlock with the previous password, or the change could be undone here.
+            if (local is not null && (Repository.ReadBestKeyFile(repoPath)?.Generation ?? 0) < local.Generation)
+            {
+                continue;
+            }
+
             try
             {
                 var secret = Repository.UnlockWithPassword(repoPath, pw, _app.Platform.Durable, out _);
@@ -199,6 +206,12 @@ public sealed class KeySetService
             if (best is null)
             {
                 return;
+            }
+
+            var existing = LocalKeyFile(keySetId);
+            if (existing is not null && existing.Generation > best.Generation)
+            {
+                return; // never replace a newer local key file with an older one
             }
 
             var local = best.ForRepository(keySetId, secret);

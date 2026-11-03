@@ -269,4 +269,29 @@ public class ApplicationFlowTests
             ks.Secret.Dispose();
         }
     }
+
+    /// <summary>A stale drive must not revert a password change on this computer (review finding 4).</summary>
+    [Fact]
+    public async Task OldPassword_OnStaleDrive_DoesNotRevertPasswordChange()
+    {
+        using var f = new AppFixture();
+        var (job, ks) = Setup(f);
+        const string newPassword = "silver mountain river lantern 77";
+
+        // Change the password while the drive is "disconnected", so the drive keeps the old key slot.
+        var drive = f.App.Db.Drives().Single();
+        f.Volumes.Connected = false;
+        f.App.Db.UpsertDrive(drive with { LastMountPath = null });
+        using (var s = await UnlockedSession.UnlockAsync(f.App, ks.Info.Id, AppFixture.Password))
+        {
+            Assert.Equal(1, s.ChangePassword(newPassword).DrivesPending);
+        }
+
+        f.Volumes.Connected = true;
+        f.App.Db.UpsertDrive(drive with { LastMountPath = f.Drive });
+        await Assert.ThrowsAsync<RezenException>(() => UnlockedSession.UnlockAsync(f.App, ks.Info.Id, AppFixture.Password));
+        using var ok = await UnlockedSession.UnlockAsync(f.App, ks.Info.Id, newPassword);
+        Assert.NotNull(ok.OpenCatalog(job.Id));
+        ks.Secret.Dispose();
+    }
 }

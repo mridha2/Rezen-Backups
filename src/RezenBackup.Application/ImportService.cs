@@ -117,6 +117,12 @@ public sealed class ImportService
 
     private void InstallLocalKeyFile(Guid keySetId, KeyFile local, RootSecret secret)
     {
+        var existingFile = KeyFileStore.TryRead(_app.Paths.LocalKeyFile(keySetId), out _);
+        if (existingFile is not null && existingFile.Generation > local.Generation && existingFile.MatchesKeyCheck(secret))
+        {
+            return; // this computer already has a newer password for this key set
+        }
+
         KeyFileStore.WriteVerified(_app.Paths.LocalKeyFile(keySetId), local, _app.Platform.Durable, f => f.MatchesKeyCheck(secret));
         var existing = _app.Db.KeySet(keySetId);
         _app.Db.UpsertKeySet((existing ?? new KeySetInfo { Id = keySetId, CreatedUtc = DateTimeOffset.UtcNow }) with
