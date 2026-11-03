@@ -286,7 +286,9 @@ internal static class Program
     private static async Task<int> Backup(RezenApp app, Options opts)
     {
         var job = ResolveJob(app, opts);
-        var secret = app.KeySets.TryLoadRemembered(job.KeySetId) ?? await app.KeySets.UnlockAsync(job.KeySetId, ReadPassword(opts, "Backup password: "));
+        // With a remembered key (full or backup-only) the run needs no password, exactly like a scheduled backup.
+        var remembered = app.Db.KeySet(job.KeySetId)?.RememberOnThisPc == true;
+        var secret = remembered ? null : await app.KeySets.UnlockAsync(job.KeySetId, ReadPassword(opts, "Backup password: "));
         Console.WriteLine($"Securing {job.Name}…");
         var runTask = app.Backups.RunAsync(job.Id, RunTrigger.Manual, secret, opts.Get("resume"));
         while (!runTask.IsCompleted)
