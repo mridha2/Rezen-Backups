@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RezenBackup.UI.ViewModels"
+        x:Class="RezenBackup.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Rezen Backup"
+        Icon="/Assets/rezen.ico"
+        Width="1180" Height="800" MinWidth="920" MinHeight="620"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel>
+    <Border DockPanel.Dock="Left" Width="236" IsVisible="{Binding ShowNav}"
+            Background="{DynamicResource RzSidebarBg}" BorderBrush="{DynamicResource RzCardBorder}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="20,24,20,20">
+          <Image Source="/Assets/rezen-256.png" Width="34" Height="34" />
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="Rezen Backup" Classes="h3" />
+            <TextBlock Text="Secure offline backup" Classes="label" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="16" Spacing="8">
+          <Border Classes="banner-good" IsVisible="{Binding IsUnlocked}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="Unlocked" FontWeight="SemiBold" Classes="good" />
+              <TextBlock Text="Backup history is accessible." Classes="label" TextWrapping="Wrap" />
+              <Button Content="Lock Rezen Backup" Command="{Binding LockCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsUnlocked}" Margin="4,0">
+            <PathIcon Data="{StaticResource IconLock}" Width="14" Height="14" Classes="accent" />
+            <TextBlock Text="Locked" Classes="label" VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+
+        <ListBox Classes="nav" ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNav}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:NavItem">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <PathIcon Data="{Binding Icon}" Width="18" Height="18" Classes="accent" />
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontSize="14" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <ContentControl Content="{Binding CurrentPage}" />
+  </DockPanel>
+</Window>

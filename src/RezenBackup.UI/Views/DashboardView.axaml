@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="36,32" Spacing="20" MaxWidth="1100">
+
+      <!-- Hero: are my files protected? -->
+      <Border Classes="card" Padding="28">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Border Width="64" Height="64" CornerRadius="32" Background="{DynamicResource RzAccentSoft}" VerticalAlignment="Center">
+            <PathIcon Data="{StaticResource IconShield}" Width="32" Height="32" Classes="accent" />
+          </Border>
+          <StackPanel Grid.Column="1" Margin="20,0" VerticalAlignment="Center" Spacing="4">
+            <TextBlock Text="Rezen Backup" Classes="label" />
+            <TextBlock Text="{Binding Headline}" Classes="h1" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding EncryptionText}" Classes="muted" />
+          </StackPanel>
+          <Button Grid.Column="2" Classes="primary big" Content="BACK UP NOW" Command="{Binding BackUpNowCommand}" IsVisible="{Binding HasJobs}" VerticalAlignment="Center" />
+          <Button Grid.Column="2" Classes="primary big" Content="Set up a backup" Command="{Binding NewJobCommand}" IsVisible="{Binding !HasJobs}" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <!-- Running backups -->
+      <ItemsControl ItemsSource="{Binding Runs}" IsVisible="{Binding HasRuns}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RunProgressViewModel">
+            <Border Classes="card" Margin="0,0,0,12">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Title}" Classes="h2" />
+                    <TextBlock Text="{Binding PhaseText}" Classes="accent" Foreground="{DynamicResource RzAccent}" FontWeight="SemiBold" Margin="0,4,0,0" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                    <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding !IsPaused}" />
+                    <Button Content="Resume" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}" />
+                    <Button Content="Stop safely" Classes="danger" Command="{Binding CancelCommand}" />
+                  </StackPanel>
+                </Grid>
+                <ProgressBar Value="{Binding Percent}" Maximum="100" IsIndeterminate="{Binding IsIndeterminate}" />
+                <UniformGrid Columns="4">
+                  <StackPanel><TextBlock Text="Files" Classes="label" /><TextBlock Text="{Binding FilesText}" Classes="value" /></StackPanel>
+                  <StackPanel><TextBlock Text="Processed" Classes="label" /><TextBlock Text="{Binding ProcessedText}" Classes="value" /></StackPanel>
+                  <StackPanel><TextBlock Text="Speed" Classes="label" /><TextBlock Text="{Binding SpeedText}" Classes="value" /></StackPanel>
+                  <StackPanel><TextBlock Text="Estimated remaining" Classes="label" /><TextBlock Text="{Binding EtaText}" Classes="value" /></StackPanel>
+                </UniformGrid>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Current file:" Classes="label" />
+                  <TextBlock Text="{Binding CurrentFile}" Classes="label" TextTrimming="CharacterEllipsis" MaxWidth="700" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Security overview -->
+      <TextBlock Text="Security" Classes="h2" />
+      <UniformGrid Columns="3">
+        <Border Classes="tile" Margin="0,0,12,12">
+          <StackPanel>
+            <TextBlock Text="Encryption" Classes="label" />
+            <TextBlock Text="AES-256 authenticated encryption" Classes="value" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+        <Border Classes="tile" Margin="0,0,12,12">
+          <StackPanel>
+            <TextBlock Text="Backup Drive" Classes="label" />
+            <TextBlock Text="{Binding DriveText}" Classes="value" Classes.good="{Binding DriveConnected}" Classes.warn="{Binding !DriveConnected}" />
+          </StackPanel>
+        </Border>
+        <Border Classes="tile" Margin="0,0,0,12">
+          <StackPanel>
+            <TextBlock Text="Last Backup" Classes="label" />
+            <TextBlock Text="{Binding LastBackupText}" Classes="value" />
+          </StackPanel>
+        </Border>
+        <Border Classes="tile" Margin="0,0,12,0">
+          <StackPanel>
+            <TextBlock Text="Status" Classes="label" />
+            <TextBlock Text="{Binding StatusText}" Classes="value" />
+          </StackPanel>
+        </Border>
+        <Border Classes="tile" Margin="0,0,12,0">
+          <StackPanel>
+            <TextBlock Text="Next Backup" Classes="label" />
+            <TextBlock Text="{Binding NextBackupText}" Classes="value" />
+          </StackPanel>
+        </Border>
+        <Border Classes="tile">
+          <StackPanel>
+            <TextBlock Text="Available Space" Classes="label" />
+            <TextBlock Text="{Binding SpaceText}" Classes="value" />
+          </StackPanel>
+        </Border>
+      </UniformGrid>
+
+      <!-- Warnings -->
+      <ItemsControl ItemsSource="{Binding Warnings}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Border Classes="banner-warn" Margin="0,0,0,8">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Data="{StaticResource IconWarn}" Width="16" Height="16" Classes="warn" />
+                <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="900" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Jobs -->
+      <TextBlock Text="Backup Jobs" Classes="h2" IsVisible="{Binding HasJobs}" />
+      <ItemsControl ItemsSource="{Binding Jobs}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:JobCard">
+            <Border Classes="card" Margin="0,0,0,12">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="{Binding Name}" Classes="h3" />
+                  <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Classes.good="{Binding DriveConnected}" />
+                  <StackPanel Orientation="Horizontal" Spacing="24">
+                    <StackPanel><TextBlock Text="Last backup" Classes="label" /><TextBlock Text="{Binding LastBackup}" /></StackPanel>
+                    <StackPanel><TextBlock Text="Next backup" Classes="label" /><TextBlock Text="{Binding NextBackup}" /></StackPanel>
+                    <StackPanel><TextBlock Text="Drive" Classes="label" /><TextBlock Text="{Binding DriveText}" /></StackPanel>
+                  </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Back Up Now" VerticalAlignment="Center"
+                        Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).BackUpJobCommand}"
+                        CommandParameter="{Binding Id}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

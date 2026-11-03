@@ -1,0 +1,211 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.SetupWizardView"
+             x:DataType="vm:SetupWizardViewModel">
+  <DockPanel>
+    <!-- Footer -->
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource RzSidebarBg}" BorderBrush="{DynamicResource RzCardBorder}" BorderThickness="0,1,0,0" Padding="36,14">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+          <TextBlock Text="{Binding StepNumberText}" Classes="muted" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Error}" Classes="bad" TextWrapping="Wrap" MaxWidth="560" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <ProgressBar IsIndeterminate="True" Width="80" IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
+          <Button Content="Cancel" Command="{Binding CancelWizardCommand}" IsVisible="{Binding CanCancel}" />
+          <Button Content="Back" Command="{Binding BackCommand}" IsEnabled="{Binding CanGoBack}" />
+          <Button Content="{Binding NextText}" Classes="primary" Command="{Binding NextCommand}" IsEnabled="{Binding !IsBusy}" MinWidth="120" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ScrollViewer>
+      <StackPanel Margin="48,36" Spacing="18" MaxWidth="860" HorizontalAlignment="Left">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Image Source="/Assets/rezen-256.png" Width="40" Height="40" />
+          <TextBlock Text="{Binding PageTitle}" Classes="h2" VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Text="{Binding StepTitle}" Classes="h1" />
+
+        <!-- Step 1: folders -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsFolders}">
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="Choose the folders and files you want to keep safe. Everything is encrypted on your computer before it is written to the backup drive." />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="primary" Content="Select Folders" Command="{Binding AddFoldersCommand}" />
+            <Button Content="Select Files" Command="{Binding AddFilesCommand}" />
+          </StackPanel>
+          <Border Classes="card" Padding="8">
+            <StackPanel>
+              <TextBlock Text="No folders selected yet." Classes="muted" Margin="12" IsVisible="{Binding !Sources.Count}" />
+              <ItemsControl ItemsSource="{Binding Sources}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,4">
+                      <PathIcon Data="{StaticResource IconFolder}" Width="16" Height="16" Classes="accent" />
+                      <TextBlock Grid.Column="1" Text="{Binding}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      <Button Grid.Column="2" Content="Remove" Classes="link"
+                              Command="{Binding $parent[UserControl].((vm:SetupWizardViewModel)DataContext).RemoveSourceCommand}" CommandParameter="{Binding}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+          <ItemsControl ItemsSource="{Binding SourceWarnings}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border Classes="banner-warn" Margin="0,0,0,6"><TextBlock Text="{Binding}" TextWrapping="Wrap" /></Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Spacing="4">
+            <TextBlock Text="Backup name" Classes="label" />
+            <TextBox Text="{Binding JobName}" MaxWidth="420" HorizontalAlignment="Left" Width="420" />
+            <TextBlock Text="This name is used as a folder name on the backup drive unless you hide names in the next step." Classes="label" />
+          </StackPanel>
+          <Button Classes="link" Content="Already have a Rezen Backup drive? Import an existing backup" Command="{Binding ImportExistingCommand}" IsVisible="{Binding ShowImport}" Margin="0,12,0,0" />
+        </StackPanel>
+
+        <!-- Step 2: destination -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsDrive}">
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="Choose an external hard drive or SSD. For protection against ransomware, connect the drive only when backing up — Rezen Backup runs pending backups automatically when it is connected." />
+          <ListBox ItemsSource="{Binding Destinations}" SelectedItem="{Binding SelectedDestination}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:DestinationOption">
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="4">
+                  <PathIcon Data="{StaticResource IconDrive}" Width="22" Height="22" Classes="accent" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Detail}" Classes="label" />
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Refresh" Command="{Binding RefreshDestinationsCommand}" />
+            <Button Content="Choose another location…" Command="{Binding ChooseFolderDestinationCommand}" />
+          </StackPanel>
+          <ItemsControl ItemsSource="{Binding DestinationMessages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border Classes="banner-warn" Margin="0,0,0,6"><TextBlock Text="{Binding}" TextWrapping="Wrap" /></Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <CheckBox IsChecked="{Binding HideNamesOnDrive}" Content="Hide this computer's name and the backup name on the drive (use anonymous folder names)" />
+        </StackPanel>
+
+        <!-- Step 3: password -->
+        <StackPanel Spacing="10" IsVisible="{Binding IsPassword}" MaxWidth="520" HorizontalAlignment="Left">
+          <Border Classes="banner-info">
+            <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="Your backup drive cannot be opened without this password." />
+          </Border>
+          <TextBlock Text="Create backup password" Classes="label" />
+          <TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}" Watermark="At least 12 characters" />
+          <TextBlock Text="Confirm password" Classes="label" />
+          <TextBox Text="{Binding ConfirmPassword}" PasswordChar="{Binding PasswordChar}" Watermark="Type it again" />
+          <CheckBox Content="Show password" IsChecked="{Binding ShowPassword}" />
+          <TextBlock Text="Password strength" Classes="label" Margin="0,8,0,0" />
+          <ProgressBar Value="{Binding StrengthValue}" Maximum="100" />
+          <TextBlock Text="{Binding StrengthText}" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding PasswordFeedback}" Classes="muted" TextWrapping="Wrap" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Margin="0,8,0,0"
+                     Text="Rezen Backup never stores your password. It is turned into an encryption key with Argon2id, a deliberately slow, memory-hard function that makes guessing attacks expensive." />
+        </StackPanel>
+
+        <!-- Step 4: recovery key -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsRecovery}">
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="This offline recovery key can unlock your backups if you forget your password. Store it away from your computer and never on the backup drive." />
+          <Border Classes="card">
+            <SelectableTextBlock Text="{Binding RecoveryKey}" FontSize="20" FontFamily="Menlo, Consolas, Courier New, monospace" TextWrapping="Wrap" HorizontalAlignment="Center" />
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Print" Command="{Binding PrintRecoveryKeyCommand}" />
+            <Button Content="Save to another device…" Command="{Binding SaveRecoveryKeyCommand}" />
+            <Button Content="Skip" Classes="danger" Command="{Binding SkipRecoveryKeyCommand}" />
+          </StackPanel>
+          <Border Classes="banner-bad">
+            <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="If you lose both your password and your recovery key, your encrypted backups cannot be recovered." />
+          </Border>
+          <TextBlock Text="{Binding ConfirmGroupPrompt}" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBox Text="{Binding ConfirmGroupInput}" Width="120" FontFamily="Menlo, Consolas, Courier New, monospace" />
+            <Button Content="Confirm" Command="{Binding ConfirmRecoveryKeyCommand}" />
+          </StackPanel>
+          <TextBlock Text="{Binding RecoveryMessage}" Classes="muted" TextWrapping="Wrap" />
+          <TextBlock Text="✓ Recovery key confirmed" Classes="good" FontWeight="SemiBold" IsVisible="{Binding RecoveryConfirmed}" />
+        </StackPanel>
+
+        <!-- Step 5: schedule -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsSchedule}" MaxWidth="560" HorizontalAlignment="Left">
+          <TextBlock Text="How often should Rezen Backup protect your files?" Classes="muted" />
+          <ComboBox ItemsSource="{Binding ScheduleKinds}" SelectedIndex="{Binding ScheduleKindIndex}" Width="260" />
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsTime}">
+            <TextBlock Text="At" VerticalAlignment="Center" />
+            <TimePicker SelectedTime="{Binding ScheduleTime}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding ShowsDays}">
+            <ToggleButton Content="Mon" IsChecked="{Binding Mon}" />
+            <ToggleButton Content="Tue" IsChecked="{Binding Tue}" />
+            <ToggleButton Content="Wed" IsChecked="{Binding Wed}" />
+            <ToggleButton Content="Thu" IsChecked="{Binding Thu}" />
+            <ToggleButton Content="Fri" IsChecked="{Binding Fri}" />
+            <ToggleButton Content="Sat" IsChecked="{Binding Sat}" />
+            <ToggleButton Content="Sun" IsChecked="{Binding Sun}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsDayOfMonth}">
+            <TextBlock Text="Day of month" VerticalAlignment="Center" />
+            <NumericUpDown Value="{Binding DayOfMonth}" Minimum="1" Maximum="31" Width="120" FormatString="0" />
+          </StackPanel>
+          <ComboBox ItemsSource="{Binding Intervals}" SelectedIndex="{Binding IntervalIndex}" IsVisible="{Binding ShowsInterval}" Width="260" />
+          <CheckBox IsChecked="{Binding AutoRunOnConnect}" Content="Run a pending backup automatically when the backup drive is connected" />
+          <Border Classes="tile">
+            <StackPanel Spacing="6">
+              <CheckBox IsChecked="{Binding RememberOnPc}" Content="Remember password on this PC (allow automatic scheduled backups)" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding RememberExplanation}" Classes="label" TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Step 6: verification -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsVerification}" MaxWidth="640" HorizontalAlignment="Left">
+          <RadioButton GroupName="verify" IsChecked="{Binding !FullVerification}">
+            <StackPanel>
+              <TextBlock Text="Standard (recommended)" FontWeight="SemiBold" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="After each backup, the encrypted data is read back from the drive and every authentication tag, file count and the snapshot structure is verified." />
+            </StackPanel>
+          </RadioButton>
+          <RadioButton GroupName="verify" IsChecked="{Binding FullVerification}">
+            <StackPanel>
+              <TextBlock Text="Full verification" FontWeight="SemiBold" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="Additionally decrypts every new file from the drive and compares its SHA-256 with your original. Slower, strongest assurance." />
+            </StackPanel>
+          </RadioButton>
+        </StackPanel>
+
+        <!-- Step 7: review -->
+        <StackPanel Spacing="12" IsVisible="{Binding IsReview}">
+          <Border Classes="card">
+            <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" >
+              <TextBlock Text="Backup name" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Column="1" Text="{Binding JobName}" Margin="0,6" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="1" Text="Folders" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ReviewSources}" Margin="0,6" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="2" Text="Backup drive" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ReviewDestination}" Margin="0,6" />
+              <TextBlock Grid.Row="3" Text="Encryption" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="AES-256-GCM authenticated encryption — required" Margin="0,6" />
+              <TextBlock Grid.Row="4" Text="Schedule" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ReviewSchedule}" Margin="0,6" />
+              <TextBlock Grid.Row="5" Text="Verification" Classes="label" Margin="0,6" />
+              <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ReviewVerification}" Margin="0,6" TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="Every backup is encrypted, password protected, date and time marked, authenticated and verified. Your files are never changed." />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

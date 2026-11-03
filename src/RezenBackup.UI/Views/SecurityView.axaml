@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.SecurityView"
+             x:DataType="vm:SecurityViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="36,32" Spacing="16" MaxWidth="980" HorizontalAlignment="Left">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="Security" Classes="h1" />
+        <Button Grid.Column="1" Content="Lock Rezen Backup" Command="{Binding LockNowCommand}" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding IsBusy}">
+        <ProgressBar IsIndeterminate="True" Width="200" />
+        <TextBlock Text="{Binding BusyText}" Classes="muted" VerticalAlignment="Center" />
+      </StackPanel>
+
+      <Border Classes="card">
+        <StackPanel Spacing="4">
+          <TextBlock Text="Backup Encryption" Classes="h3" />
+          <TextBlock Text="{Binding EncryptionText}" TextWrapping="Wrap" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Text="Encryption is always on. File contents, names and folder structure are encrypted and authenticated before anything is written to the backup drive." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Password" Classes="h3" />
+            <TextBlock Text="{Binding PasswordText}" TextWrapping="Wrap" />
+          </StackPanel>
+          <Button Grid.Column="1" Content="Change Password" Command="{Binding ChangePasswordCommand}" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Recovery Key" Classes="h3" />
+            <TextBlock Text="{Binding RecoveryText}" TextWrapping="Wrap" Classes.good="{Binding RecoveryConfigured}" Classes.warn="{Binding !RecoveryConfigured}" />
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="If you lose both your password and your recovery key, your encrypted backups cannot be recovered. There is no online reset and no back door." />
+          </StackPanel>
+          <Button Grid.Column="1" Content="View Recovery Key" Command="{Binding ViewRecoveryKeyCommand}" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Auto-Lock" Classes="h3" />
+          <ComboBox ItemsSource="{Binding AutoLockOptions}" SelectedIndex="{Binding AutoLockIndex}" Width="300" />
+          <CheckBox Content="Lock Rezen Backup when the computer is locked" IsChecked="{Binding LockWithSystem}" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Text="Locking closes unlocked backup views and clears encryption keys from memory." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Remember on This PC" Classes="h3" />
+          <CheckBox Content="Remember password on this PC (allow automatic scheduled backups)" IsChecked="{Binding Remember}" />
+          <TextBlock Text="{Binding RememberText}" Classes="label" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Backup Integrity" Classes="h3" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Text="Every backup is verified when it is made. A full verification re-reads and authenticates everything on the drive and detects damage to older backups." />
+          <ItemsControl ItemsSource="{Binding Integrity}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:IntegrityItem">
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Job}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding LastVerified}" Classes="label" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="Verify Now" Command="{Binding $parent[UserControl].((vm:SecurityViewModel)DataContext).VerifyCommand}" CommandParameter="{Binding JobId}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Security Log" Classes="h3" />
+          <TextBlock Text="{Binding ChainStatus}" Classes="label" />
+          <ItemsControl ItemsSource="{Binding Events}" MaxHeight="360">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:SecurityEventItem">
+                <Grid ColumnDefinitions="170,230,*" Margin="0,2">
+                  <TextBlock Text="{Binding When}" Classes="label" />
+                  <TextBlock Grid.Column="1" Text="{Binding Type}" FontWeight="SemiBold" FontSize="13" />
+                  <TextBlock Grid.Column="2" Text="{Binding Detail}" Classes="label" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

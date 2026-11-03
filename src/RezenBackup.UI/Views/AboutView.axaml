@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.AboutView"
+             x:DataType="vm:AboutViewModel">
+  <StackPanel Margin="36,32" Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+    <StackPanel Orientation="Horizontal" Spacing="16">
+      <Image Source="/Assets/rezen-256.png" Width="72" Height="72" />
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Text="Rezen Backup" Classes="h1" />
+        <TextBlock Text="{Binding Version}" Classes="muted" />
+      </StackPanel>
+    </StackPanel>
+    <Border Classes="card">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Secure offline backup by Rezen." Classes="h3" />
+        <TextBlock TextWrapping="Wrap" Text="Rezen Backup works entirely offline. It never uploads files, file names, passwords, keys, logs or usage information, and needs no account or internet connection." />
+        <TextBlock TextWrapping="Wrap" Text="Encryption: AES-256-GCM authenticated encryption with per-object keys. Passwords are protected with Argon2id. Without the correct password or recovery key, the backup data is computationally inaccessible." />
+        <TextBlock Text="{Binding Format}" Classes="label" />
+        <TextBlock Text="{Binding Credentials}" Classes="label" />
+        <TextBlock Text="{Binding Platform}" Classes="label" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>
