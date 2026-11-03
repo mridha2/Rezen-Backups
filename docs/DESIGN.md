@@ -1304,12 +1304,21 @@ Where the implementation differs from the plan above, this section takes precede
 | macOS notifications | `osascript display notification`. | Works without an app-bundle notification entitlement. |
 | Run-issue paths (spec §68) | Sealed with the repository key (AES-256-GCM, per-value HKDF key) in `run_issues.path_sealed`. Shown only after unlocking. | File names never sit in the local database in plaintext. |
 
-**Deferred (not in v1, format already allows them):**
+**Built after the first draft of this section:**
 
-- Write-only scheduled key and TPM binding (§9.5).
-- Drive rotation with several drives per job (§21.2).
-- Optional NTFS ACL lockdown of the backup folder (§21.3).
-- Automatic "full snapshot every N days" (the field exists; the method is selected per job).
+- **Backup-only key (§9.5).** Data packs use algorithm 2. Each pack gets a fresh ephemeral X25519 key, and the pack key is derived from the shared secret with the repository's content public key. The private key is derived from the Root Secret.
+  - "Remember on this PC" stores only per-drive *backup-only* keys by default: metadata, chunk-ID, tree-ID, chunking and check keys, plus the content public key.
+  - A thief of that credential can add backups and read names and history, but cannot decrypt any stored file contents, including old versions of deleted files.
+  - Retention with a backup-only key deletes dead packs but does not repack. Full verification checks the data written in that run; reused data was verified when it was first written.
+  - The full-key mode remains available as an option.
+- **Drive rotation (§21.2).** A job can have several drives, each with its own repository under the same Key Set.
+  - Backups go to every connected drive in turn.
+  - A returning drive is caught up based on its own newest snapshot.
+  - Restore lets the user choose which drive to restore from.
+  - "Stop using a drive" only forgets it on this computer.
+- **Periodic independent full snapshots:** every 30 or 90 days, per job.
+
+**Still deferred:** TPM binding of the remembered key, and the optional NTFS ACL lockdown of the backup folder (§21.3).
 
 **Verification status of platform code:**
 

@@ -9,6 +9,8 @@ Rezen Backup copies the folders you choose to an external drive as **encrypted, 
 - **Offline recovery key** — print it or save it to another device; no online reset, no back door.
 - **Dated snapshots** — `2026-11-03_20-00-00`, each a complete recovery point; incremental and deduplicated.
 - **Verified before it counts** — data is flushed, read back from the device, authenticated and committed with an authenticated record; interrupted backups stay `.incomplete`.
+- **Backup-only key for scheduled backups** — the key kept on the PC can add new backups but cannot decrypt stored file contents.
+- **Drive rotation** — back up one job to several drives (e.g. one kept off-site); each is caught up when connected.
 - **100% offline** — no account, cloud, telemetry or update check. A test fails the build if any networking API is referenced.
 
 ## Repository layout
@@ -27,6 +29,8 @@ Rezen Backup copies the folders you choose to an external drive as **encrypted, 
 | `src/RezenBackup.Cli` | `rezen` command-line tool |
 | `src/RezenBackup.Service` | Windows-only VSS helper service (creates/deletes shadow copies only) |
 | `tests/RezenBackup.Tests` | Crypto, format, engine, crash-injection, application-flow, policy and offline tests |
+| `tests/RezenBackup.UI.Tests` | Headless UI tests driving the real windows and dialogs |
+| `docs/WINDOWS-TESTING.md` | Step-by-step manual test plan for Windows |
 | `installer/` | WiX MSI (Windows) and `.app`/`.dmg` packaging (macOS) |
 
 ## Building and testing
@@ -73,7 +77,7 @@ rezen snapshots | ls | search --name budget --versions
 rezen restore --to ~/Restored [--snapshot 2026-11-03_20-00-00] [--path Invoices]
 rezen verify --deep [--repair]
 rezen import /Volumes/Backup [--recovery-key]
-rezen change-password | recovery-key | remember on|off | history | security-log | status
+rezen change-password | recovery-key | remember on|off [--full-key] | history | security-log | status
 ```
 
 Passwords are read without echo (or from standard input with `--password-stdin`) and are never accepted as command-line arguments.
