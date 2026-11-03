@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>rezen</AssemblyName>
+    <RootNamespace>RezenBackup.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RezenBackup.Agent\RezenBackup.Agent.csproj" />
+  </ItemGroup>
+</Project>
