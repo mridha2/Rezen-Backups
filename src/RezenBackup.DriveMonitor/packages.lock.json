@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.CodeAnalysis.BannedApiAnalyzers": {
+        "type": "Direct",
+        "requested": "[5.6.0, )",
+        "resolved": "5.6.0",
+        "contentHash": "Kcobt3pnOdO0A+6CKiMHZdTEluJpsfxiV20axtZdmfBQnDmiWTKPJADlgAfdTuKNAnVarrkJa0UEGwuOo91muw=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Direct",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "SwcbEBtkECq3D2oywvHkm46fyrX9Dd2JPWphDnHUc2+cUWR1Mdo41atAjh/9iZjgQxuvbKfZKXqostT/LZfefA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "QtpQzuSZVyTPCuHW058yCs9Nj0394uUkNyFHS813nOmK9UgUdBdaprJ5PPsBgsQIpxADTsTkbaMMonykem6qdw=="
+      },
+      "rezenbackup.core": {
+        "type": "Project",
+        "dependencies": {
+          "RezenBackup.Crypto": "[1.0.0, )"
+        }
+      },
+      "rezenbackup.crypto": {
+        "type": "Project",
+        "dependencies": {
+          "libsodium": "[1.0.21, )"
+        }
+      },
+      "rezenbackup.format": {
+        "type": "Project",
+        "dependencies": {
+          "RezenBackup.Core": "[1.0.0, )",
+          "RezenBackup.Crypto": "[1.0.0, )",
+          "System.Formats.Cbor": "[10.0.14, )"
+        }
+      },
+      "libsodium": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.21, )",
+        "resolved": "1.0.21",
+        "contentHash": "mdyeeMBfV0OfB6BDKriUZmEAL2Jm8FR1ic/IBpxkflv4kyV8lXgplzQ9J9cUtjR2jl5Fvc2mxmSloXoZeAlcPA=="
+      },
+      "System.Formats.Cbor": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
+      }
+    }
+  }
+}
