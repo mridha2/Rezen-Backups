@@ -674,4 +674,28 @@ public class ReviewRegressionTests
         Assert.Equal(keys.ComputeKeyCheck(), restored.ComputeKeyCheck());
         Assert.True(blob.ReadOnlySpan.IndexOf(root.Bytes) < 0);
     }
+
+    /// <summary>The repository lock is an OS lock: exclusive while held, free again after a crash (review 2 finding 7).</summary>
+    [Fact]
+    public void RepositoryLock_IsExclusive_AndLeftoverFileDoesNotBlock()
+    {
+        using var t = new TestRepo();
+        var layout = t.Repo.Layout;
+        using (RepositoryLock.Acquire(layout, Guid.NewGuid()))
+        {
+            Assert.True(RepositoryLock.IsHeld(layout));
+            var ex = Assert.Throws<RezenException>(() => RepositoryLock.Acquire(layout, Guid.NewGuid()));
+            Assert.Equal(ErrorCode.RepositoryLocked, ex.Code);
+        }
+
+        Assert.False(File.Exists(layout.LockPath));
+
+        // A lock file left behind by a crashed process (no OS lock held) is taken over.
+        File.WriteAllText(layout.LockPath, "{ partial");
+        Assert.False(RepositoryLock.IsHeld(layout));
+        using (RepositoryLock.Acquire(layout, Guid.NewGuid()))
+        {
+            Assert.True(RepositoryLock.IsHeld(layout));
+        }
+    }
 }

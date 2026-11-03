@@ -5,101 +5,81 @@ using RezenBackup.Core;
 namespace RezenBackup.Format;
 
 /// <summary>
-/// Exclusive writer lock for a repository (DESIGN §16.1 step 1). Stale locks left by a crashed process on this
-/// computer are broken automatically; locks held by another computer are never broken silently.
+/// Exclusive writer lock for a repository (DESIGN §16.1 step 1).
 /// </summary>
+/// <remarks>
+/// The lock is an operating-system lock on <c>repository.lock</c>: the holder keeps the file open with
+/// <see cref="FileShare.None"/> (a sharing lock on Windows, <c>flock(LOCK_EX)</c> on macOS). The OS releases it the
+/// moment the holder exits or crashes, so there is no guessing about stale locks and no window in which two writers
+/// both believe they hold it. The JSON inside is informational only.
+/// </remarks>
 public sealed class RepositoryLock : IDisposable
 {
     private readonly FileStream _stream;
-    private readonly string _path;
     private bool _disposed;
 
-    private RepositoryLock(FileStream stream, string path)
+    private RepositoryLock(FileStream stream)
     {
         _stream = stream;
-        _path = path;
     }
 
     public sealed record LockInfo(string Host, int ProcessId, long ProcessStartTicks, DateTimeOffset AcquiredUtc, Guid RunId);
 
-    public static RepositoryLock Acquire(RepositoryLayout layout, Guid runId, bool breakForeignLock = false)
+    public static RepositoryLock Acquire(RepositoryLayout layout, Guid runId)
     {
         var path = layout.LockPath;
-        for (int attempt = 0; attempt < 2; attempt++)
-        {
-            try
-            {
-                var fs = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.WriteThrough);
-                using var current = Process.GetCurrentProcess();
-                var info = new LockInfo(Environment.MachineName, Environment.ProcessId, current.StartTime.ToUniversalTime().Ticks, DateTimeOffset.UtcNow, runId);
-                JsonSerializer.Serialize(fs, info);
-                fs.Flush(flushToDisk: true);
-                return new RepositoryLock(fs, path);
-            }
-            catch (IOException) when (File.Exists(path) && attempt == 0)
-            {
-                var existing = TryReadInfo(path);
-                if (existing is null || IsStale(existing) || breakForeignLock)
-                {
-                    TryDelete(path);
-                    continue;
-                }
-
-                throw new RezenException(ErrorCode.RepositoryLocked, $"Locked by {existing.Host} (process {existing.ProcessId}).");
-            }
-            catch (IOException ex)
-            {
-                throw IoErrors.Translate(ex);
-            }
-        }
-
-        throw new RezenException(ErrorCode.RepositoryLocked);
-    }
-
-    public static LockInfo? TryReadInfo(string path)
-    {
+        FileStream fs;
         try
         {
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return JsonSerializer.Deserialize<LockInfo>(fs);
+            // OpenOrCreate + FileShare.None: succeeds only if nobody holds the lock. A file left behind by a crashed run
+            // is simply taken over (its holder is gone, so the OS lock is free).
+            fs = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.WriteThrough | FileOptions.DeleteOnClose);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (IOException ex) when (File.Exists(path) && !IoErrors.IsDeviceGone(ex) && !IoErrors.IsDiskFull(ex))
         {
-            return null;
+            throw new RezenException(ErrorCode.RepositoryLocked, "Another Rezen Backup process is writing to this backup.");
         }
-    }
-
-    private static bool IsStale(LockInfo info)
-    {
-        if (!string.Equals(info.Host, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+        catch (IOException ex)
         {
-            // Another computer: only stale if very old (a crashed run more than a day ago).
-            return DateTimeOffset.UtcNow - info.AcquiredUtc > TimeSpan.FromDays(1);
+            throw IoErrors.Translate(ex);
         }
 
         try
         {
-            using var p = Process.GetProcessById(info.ProcessId);
-            return p.HasExited || p.StartTime.ToUniversalTime().Ticks != info.ProcessStartTicks;
+            using var current = Process.GetCurrentProcess();
+            var info = new LockInfo(Environment.MachineName, Environment.ProcessId, current.StartTime.ToUniversalTime().Ticks, DateTimeOffset.UtcNow, runId);
+            fs.SetLength(0);
+            JsonSerializer.Serialize(fs, info);
+            fs.Flush(flushToDisk: true);
+            return new RepositoryLock(fs);
         }
-        catch (ArgumentException)
+        catch
         {
-            return true;
-        }
-        catch (InvalidOperationException)
-        {
-            return true;
+            fs.Dispose();
+            throw;
         }
     }
 
-    private static void TryDelete(string path)
+    /// <summary>True if another process currently holds the lock.</summary>
+    public static bool IsHeld(RepositoryLayout layout)
     {
+        if (!File.Exists(layout.LockPath))
+        {
+            return false;
+        }
+
         try
         {
-            File.Delete(path);
+            using var probe = new FileStream(layout.LockPath, FileMode.Open, FileAccess.Read, FileShare.None);
+            return false;
         }
         catch (IOException)
         {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 
@@ -111,7 +91,8 @@ public sealed class RepositoryLock : IDisposable
         }
 
         _disposed = true;
+
+        // DeleteOnClose removes the file as the handle closes; no other process could have taken it over meanwhile.
         _stream.Dispose();
-        TryDelete(_path);
     }
 }
