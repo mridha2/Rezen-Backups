@@ -1,0 +1,47 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.HistoryView"
+             x:DataType="vm:HistoryViewModel">
+  <DockPanel Margin="36,32">
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+      <TextBlock Text="{Binding Title}" Classes="h1" />
+      <Button Grid.Column="1" Content="Refresh" Command="{Binding RefreshCommand}" />
+    </Grid>
+    <Border Classes="card" Padding="0">
+      <DockPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="190,190,130,190,100,90,*" Margin="20,12">
+          <TextBlock Text="Date" Classes="label" />
+          <TextBlock Grid.Column="1" Text="Job" Classes="label" />
+          <TextBlock Grid.Column="2" Text="Status" Classes="label" />
+          <TextBlock Grid.Column="3" Text="Security" Classes="label" />
+          <TextBlock Grid.Column="4" Text="Data" Classes="label" HorizontalAlignment="Right" />
+          <TextBlock Grid.Column="5" Text="Duration" Classes="label" HorizontalAlignment="Right" />
+        </Grid>
+        <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Background="Transparent">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:HistoryRow">
+              <StackPanel>
+                <Grid ColumnDefinitions="190,190,130,190,100,90,*">
+                  <TextBlock Text="{Binding Date}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Job}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding Status}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="3" Text="{Binding Security}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="4" Text="{Binding Data}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="5" Text="{Binding Duration}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="{Binding IssuesText}" Classes="link" IsVisible="{Binding HasIssues}"
+                            Command="{Binding $parent[UserControl].((vm:HistoryViewModel)DataContext).ShowIssuesCommand}" CommandParameter="{Binding}" />
+                    <Button Content="Details" Classes="link"
+                            Command="{Binding $parent[UserControl].((vm:HistoryViewModel)DataContext).ShowDetailsCommand}" CommandParameter="{Binding}" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding Message}" Classes="label" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+  </DockPanel>
+</UserControl>

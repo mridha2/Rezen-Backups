@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RezenBackup.Scheduler</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RezenBackup.Core\RezenBackup.Core.csproj" />
+  </ItemGroup>
+</Project>

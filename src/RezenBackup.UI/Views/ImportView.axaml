@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.ImportView"
+             x:DataType="vm:ImportViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="48,36" Spacing="14" MaxWidth="780" HorizontalAlignment="Left">
+      <Button Content="← Back" Classes="link" Command="{Binding BackCommand}" />
+      <TextBlock Text="Import Existing Rezen Backup" Classes="h1" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="Connect a drive with Rezen Backups made on this or another computer. Everything needed to restore is on the drive — you only need your password or recovery key." />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Scan Drives" Command="{Binding ScanCommand}" />
+        <Button Content="Choose Folder…" Command="{Binding ChooseFolderCommand}" />
+      </StackPanel>
+      <ListBox ItemsSource="{Binding Found}" SelectedItem="{Binding Selected}" Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:FoundItem">
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="4">
+              <PathIcon Data="{StaticResource IconDrive}" Width="22" Height="22" Classes="accent" />
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Detail}" Classes="label" />
+              </StackPanel>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <RadioButton GroupName="how" Content="Unlock with my backup password" IsChecked="{Binding !UseRecoveryKey}" />
+          <RadioButton GroupName="how" Content="Unlock with my recovery key" IsChecked="{Binding UseRecoveryKey}" />
+          <TextBox Text="{Binding Secret}" PasswordChar="•" Watermark="Backup password" IsVisible="{Binding !UseRecoveryKey}" />
+          <TextBox Text="{Binding Secret}" Watermark="RZN1-XXXX-XXXX-…" FontFamily="Menlo, Consolas, monospace" IsVisible="{Binding UseRecoveryKey}" />
+          <StackPanel Spacing="4" IsVisible="{Binding UseRecoveryKey}">
+            <TextBlock Text="Choose a new backup password" Classes="label" />
+            <TextBox Text="{Binding NewPassword}" PasswordChar="•" Watermark="At least 12 characters" />
+          </StackPanel>
+          <Button Classes="primary" Content="Import and Rebuild Catalog" Command="{Binding ImportCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+        </StackPanel>
+      </Border>
+      <TextBlock Text="{Binding Message}" Classes="warn" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

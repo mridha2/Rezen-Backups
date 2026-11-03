@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.JobsView"
+             x:DataType="vm:JobsViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="36,32" Spacing="18" MaxWidth="1100">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="Backup Jobs" Classes="h1" />
+        <Button Grid.Column="1" Classes="primary" Content="New Backup Job" Command="{Binding NewJobCommand}" />
+      </Grid>
+      <TextBlock Text="No backup jobs yet. Create one to start protecting your files." Classes="muted" IsVisible="{Binding IsEmpty}" />
+      <ItemsControl ItemsSource="{Binding Jobs}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:JobRow">
+            <Border Classes="card" Margin="0,0,0,14">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Name}" Classes="h2" />
+                    <TextBlock Text="{Binding Status}" FontWeight="SemiBold" Classes="muted" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="primary" Content="Back Up Now" VerticalAlignment="Top"
+                          Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).BackUpNowCommand}" CommandParameter="{Binding Id}" />
+                </Grid>
+                <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                  <TextBlock Text="Sources" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Column="1" Text="{Binding Sources}" Margin="0,4" TextWrapping="Wrap" />
+                  <TextBlock Grid.Row="1" Text="Destination" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Destination}" Margin="0,4" />
+                  <TextBlock Grid.Row="2" Text="Schedule" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Schedule}" Margin="0,4" />
+                  <TextBlock Grid.Row="3" Text="Encryption" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Row="3" Grid.Column="1" Text="Enabled — Required (AES-256-GCM)" Margin="0,4" />
+                  <TextBlock Grid.Row="4" Text="Verification" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Verification}" Margin="0,4" />
+                  <TextBlock Grid.Row="5" Text="Retention" Classes="label" Margin="0,4" />
+                  <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Retention}" Margin="0,4" />
+                </Grid>
+                <WrapPanel>
+                  <Button Content="Edit" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditCommand}" CommandParameter="{Binding Id}" />
+                  <Button Content="Restore" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).RestoreCommand}" CommandParameter="{Binding Id}" />
+                  <Button Content="History" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).HistoryCommand}" CommandParameter="{Binding Id}" />
+                  <Button Content="Change Password" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).ChangePasswordCommand}" />
+                  <Button Content="{Binding ToggleText}" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).ToggleCommand}" CommandParameter="{Binding Id}" />
+                  <Button Content="Delete Job" Classes="danger" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding Id}" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

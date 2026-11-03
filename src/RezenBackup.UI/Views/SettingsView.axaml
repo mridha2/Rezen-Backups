@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="36,32" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
+      <TextBlock Text="Settings" Classes="h1" />
+      <Border Classes="banner-info" IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="General" Classes="h3" />
+          <CheckBox Content="Start with Windows / macOS (background protection at sign-in)" IsChecked="{Binding StartWithSystem}" />
+          <CheckBox Content="Run background protection (scheduled backups while this window is closed)" IsChecked="{Binding RunBackgroundAgent}" />
+          <CheckBox Content="Show icon in the system tray / menu bar" IsChecked="{Binding ShowTrayIcon}" />
+          <CheckBox Content="Run missed backups" IsChecked="{Binding RunMissed}" />
+          <CheckBox Content="Keep computer awake while a backup is running" IsChecked="{Binding KeepAwake}" />
+          <Border Classes="banner-info" IsVisible="{Binding IsMac}" Margin="0,8,0,0">
+            <StackPanel Spacing="6">
+              <TextBlock TextWrapping="Wrap" Text="macOS protects folders such as Desktop, Documents and Mail. To back them up, allow Rezen Backup in Full Disk Access." />
+              <Button Content="Open Full Disk Access Settings" Command="{Binding OpenFullDiskAccessCommand}" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Backup" Classes="h3" />
+          <CheckBox Content="Use full verification for new backup jobs" IsChecked="{Binding FullVerificationDefault}" />
+          <CheckBox Content="Automatically run pending backups when a backup drive is connected" IsChecked="{Binding AutoBackupOnConnect}" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Text="Schedules, retention and exclusions are set for each backup job on the Backup Jobs page." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Security" Classes="h3" />
+          <CheckBox Content="Hide file names in logs" IsChecked="{Binding HideFileNames}" />
+          <TextBlock Classes="label" TextWrapping="Wrap" Text="Password, recovery key, auto-lock and remembering the key on this computer are on the Security page." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Notifications" Classes="h3" />
+          <CheckBox Content="Backup completed" IsChecked="{Binding NotifySuccess}" />
+          <CheckBox Content="Backup failed" IsChecked="{Binding NotifyFailure}" />
+          <CheckBox Content="Waiting for the backup drive" IsChecked="{Binding NotifyWaiting}" />
+          <CheckBox Content="Integrity problems" IsChecked="{Binding NotifyIntegrity}" />
+          <CheckBox Content="Low space on the backup drive" IsChecked="{Binding NotifyLowSpace}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Appearance" Classes="h3" />
+          <ComboBox ItemsSource="{Binding Themes}" SelectedIndex="{Binding ThemeIndex}" Width="200" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Advanced" Classes="h3" />
+          <TextBlock Text="{Binding DataFolder, StringFormat='Local data: {0}'}" Classes="label" TextWrapping="Wrap" />
+          <WrapPanel>
+            <Button Content="Open Logs Folder" Command="{Binding OpenLogsFolderCommand}" Margin="0,0,8,8" />
+            <Button Content="Open Data Folder" Command="{Binding OpenDataFolderCommand}" Margin="0,0,8,8" />
+            <Button Content="Back Up Local Database" Command="{Binding BackupDatabaseCommand}" Margin="0,0,8,8" />
+          </WrapPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ComboBox ItemsSource="{Binding Jobs}" SelectedItem="{Binding SelectedJob}" Width="240" />
+            <Button Content="Rebuild Backup Catalog" Command="{Binding RebuildCatalogCommand}" />
+          </StackPanel>
+          <WrapPanel>
+            <Button Content="Export Configuration" Command="{Binding ExportConfigCommand}" Margin="0,0,8,8" />
+            <Button Content="Import Configuration" Command="{Binding ImportConfigCommand}" Margin="0,0,8,8" />
+            <Button Content="Import Existing Rezen Backup" Command="{Binding ImportExistingCommand}" Margin="0,0,8,8" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

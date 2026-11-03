@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>RezenBackup.Crypto</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="libsodium" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RezenBackup.Tests" />
+    <InternalsVisibleTo Include="RezenBackup.UI.Tests" />
+  </ItemGroup>
+</Project>

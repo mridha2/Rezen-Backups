@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RezenBackup.Format</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Formats.Cbor" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RezenBackup.Crypto\RezenBackup.Crypto.csproj" />
+    <ProjectReference Include="..\RezenBackup.Core\RezenBackup.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RezenBackup.Tests" />
+  </ItemGroup>
+</Project>

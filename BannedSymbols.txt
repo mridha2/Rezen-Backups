@@ -1,0 +1,12 @@
+T:System.Random;Use System.Security.Cryptography.RandomNumberGenerator (spec §18). System.Random is never acceptable for security values.
+T:System.Security.Cryptography.RNGCryptoServiceProvider;Use RandomNumberGenerator.
+T:System.Security.Cryptography.DES;Forbidden algorithm (spec §5).
+T:System.Security.Cryptography.TripleDES;Forbidden algorithm (spec §5).
+T:System.Security.Cryptography.RC2;Forbidden algorithm (spec §5).
+T:System.Security.Cryptography.MD5;Forbidden algorithm.
+T:System.Security.Cryptography.SHA1;Forbidden algorithm.
+T:System.Net.Http.HttpClient;Rezen Backup is fully offline (spec §3).
+T:System.Net.WebClient;Rezen Backup is fully offline (spec §3).
+T:System.Net.Sockets.Socket;Rezen Backup is fully offline (spec §3).
+T:System.Net.Sockets.TcpClient;Rezen Backup is fully offline (spec §3).
+T:System.Net.Sockets.UdpClient;Rezen Backup is fully offline (spec §3).

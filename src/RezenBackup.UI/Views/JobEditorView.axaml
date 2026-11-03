@@ -1,0 +1,165 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:RezenBackup.UI.ViewModels"
+             x:Class="RezenBackup.UI.Views.JobEditorView"
+             x:DataType="vm:JobEditorViewModel">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource RzSidebarBg}" BorderBrush="{DynamicResource RzCardBorder}" BorderThickness="0,1,0,0" Padding="36,14">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Error}" Classes="bad" VerticalAlignment="Center" TextWrapping="Wrap" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <Button Content="Cancel" Command="{Binding CancelCommand}" />
+          <Button Content="Save" Classes="primary" Command="{Binding SaveCommand}" MinWidth="110" />
+        </StackPanel>
+      </Grid>
+    </Border>
+    <ScrollViewer>
+      <StackPanel Margin="36,32" Spacing="18" MaxWidth="900" HorizontalAlignment="Left">
+        <TextBlock Text="Edit Backup Job" Classes="h1" />
+
+        <Border Classes="banner-warn" IsVisible="{Binding HasIncomplete}">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="An interrupted backup was found. It is not treated as a recovery point until it is completed and verified." TextWrapping="Wrap" />
+            <ItemsControl ItemsSource="{Binding Incomplete}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                    <TextBlock Text="{Binding}" VerticalAlignment="Center" FontFamily="Menlo, Consolas, monospace" />
+                    <Button Content="Resume Backup" Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).ResumeIncompleteCommand}" CommandParameter="{Binding}" />
+                    <Button Content="Discard Incomplete Snapshot" Classes="danger" Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).DiscardIncompleteCommand}" CommandParameter="{Binding}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Text="General" Classes="h3" />
+            <TextBlock Text="Name" Classes="label" />
+            <TextBox Text="{Binding Name}" Width="420" HorizontalAlignment="Left" />
+            <CheckBox Content="Enabled — back up from this computer" IsChecked="{Binding Enabled}" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Backup drives" Classes="h3" />
+              <Button Grid.Column="1" Content="Add Another Drive" Command="{Binding AddDriveCommand}" />
+            </Grid>
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="Use two or more drives and keep one away from this computer. Each drive has its own complete encrypted backup; ransomware or a fire cannot reach a drive that is not here." />
+            <ItemsControl ItemsSource="{Binding Drives}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DriveRow">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
+                    <PathIcon Data="{StaticResource IconDrive}" Width="16" Height="16" Classes="accent" />
+                    <StackPanel Grid.Column="1" Margin="10,0">
+                      <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Detail}" Classes="label" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Stop using" Classes="link" IsVisible="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).CanRemoveDrive}"
+                            Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).RemoveDriveCommand}" CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Folders" Classes="h3" />
+              <Button Grid.Column="1" Content="Add Folders" Command="{Binding AddFoldersCommand}" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Sources}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
+                    <PathIcon Data="{StaticResource IconFolder}" Width="16" Height="16" Classes="accent" />
+                    <TextBlock Grid.Column="1" Text="{Binding}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <Button Grid.Column="2" Content="Remove" Classes="link" Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).RemoveSourceCommand}" CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Exclusions" Classes="h3" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="Everything listed here is skipped. Nothing else is ever excluded silently." />
+            <ItemsControl ItemsSource="{Binding Exclusions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ExclusionRow">
+                  <Grid ColumnDefinitions="*,160,Auto" Margin="0,2">
+                    <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontFamily="Menlo, Consolas, monospace" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{Binding KindText}" Classes="label" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="Remove" Classes="link" Command="{Binding $parent[UserControl].((vm:JobEditorViewModel)DataContext).RemoveExclusionCommand}" CommandParameter="{Binding}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <ComboBox ItemsSource="{Binding ExclusionKinds}" SelectedIndex="{Binding NewExclusionKind}" Width="250" />
+              <TextBox Text="{Binding NewExclusionValue}" Width="200" Watermark="Value" />
+              <Button Content="Add" Command="{Binding AddExclusionCommand}" />
+              <Button Content="Exclude a folder…" Command="{Binding AddExcludedFolderCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Schedule" Classes="h3" />
+            <ComboBox ItemsSource="{Binding ScheduleKinds}" SelectedIndex="{Binding ScheduleKindIndex}" Width="260" />
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsTime}">
+              <TextBlock Text="At" VerticalAlignment="Center" />
+              <TimePicker SelectedTime="{Binding ScheduleTime}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding ShowsDays}">
+              <ToggleButton Content="Mon" IsChecked="{Binding Mon}" />
+              <ToggleButton Content="Tue" IsChecked="{Binding Tue}" />
+              <ToggleButton Content="Wed" IsChecked="{Binding Wed}" />
+              <ToggleButton Content="Thu" IsChecked="{Binding Thu}" />
+              <ToggleButton Content="Fri" IsChecked="{Binding Fri}" />
+              <ToggleButton Content="Sat" IsChecked="{Binding Sat}" />
+              <ToggleButton Content="Sun" IsChecked="{Binding Sun}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsDayOfMonth}">
+              <TextBlock Text="Day of month" VerticalAlignment="Center" />
+              <NumericUpDown Value="{Binding DayOfMonth}" Minimum="1" Maximum="31" Width="120" FormatString="0" />
+            </StackPanel>
+            <ComboBox ItemsSource="{Binding Intervals}" SelectedIndex="{Binding IntervalIndex}" IsVisible="{Binding ShowsInterval}" Width="260" />
+            <CheckBox Content="Run missed backups when the computer is next on" IsChecked="{Binding RunMissed}" />
+            <CheckBox Content="Run a pending backup automatically when the backup drive is connected" IsChecked="{Binding AutoRunOnConnect}" />
+            <CheckBox Content="Eject the backup drive after a successful backup" IsChecked="{Binding EjectAfter}" />
+            <CheckBox Content="Do not start scheduled backups while running on battery" IsChecked="{Binding SkipOnBattery}" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Versions and verification" Classes="h3" />
+            <TextBlock Text="Retention" Classes="label" />
+            <ComboBox ItemsSource="{Binding RetentionLabels}" SelectedIndex="{Binding RetentionIndex}" Width="460" />
+            <Border Classes="banner-warn" IsVisible="{Binding RetentionWarning, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Text="{Binding RetentionWarning}" TextWrapping="Wrap" />
+            </Border>
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="Old snapshots are removed only after a newer backup has been verified, and the 3 most recent snapshots are always kept." />
+            <CheckBox Content="Full verification (re-read every new file from the drive and compare it with the original)" IsChecked="{Binding FullVerification}" />
+            <CheckBox Content="Full snapshots (write an independent copy each run instead of only changes — uses more space)" IsChecked="{Binding FullSnapshot}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !FullSnapshot}">
+              <TextBlock Text="Also write an independent full copy" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding FullEveryOptions}" SelectedIndex="{Binding FullEveryIndex}" Width="180" />
+            </StackPanel>
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="An independent copy shares no data with other snapshots, so damage to one part of the drive cannot affect every version." />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>
