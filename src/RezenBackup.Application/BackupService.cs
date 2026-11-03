@@ -79,7 +79,8 @@ public sealed class BackupService
                 var resume = resumeFolder is not null && Directory.Exists(Path.Combine(target.Path, resumeFolder)) ? resumeFolder : null;
                 var row = await RunOneAsync(job, trigger, target, providedSecret?.Clone(), resume, ct).ConfigureAwait(false);
                 worst = worst is null || Rank(row.Outcome) > Rank(worst.Outcome) ? row : worst;
-                if (row.Outcome is RunOutcome.Cancelled or RunOutcome.WaitingForPassword)
+                // Only the user stopping the backup ends the rotation; a locked or key-less drive must not block the others.
+                if (row.Error == ErrorCode.Cancelled || ct.IsCancellationRequested)
                 {
                     break;
                 }
@@ -201,7 +202,7 @@ public sealed class BackupService
             }
 
             using var awake = settings.KeepComputerAwake ? _app.Platform.Power.KeepAwake("Rezen Backup is running") : null;
-            var method = ChooseMethod(job);
+            var method = ChooseMethod(job, repoRecord.Id);
             var options = new BackupOptions
             {
                 Sources = job.Sources,
@@ -238,7 +239,7 @@ public sealed class BackupService
             _app.Db.UpsertSnapshot(snapshot);
             if (method == BackupMethod.FullSnapshot)
             {
-                _app.Db.SetSetting(LastFullKey(job.Id), DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+                _app.Db.SetSetting(LastFullKey(repoRecord.Id), DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
             }
             if (result.Warnings.Count > 0)
             {
@@ -343,20 +344,21 @@ public sealed class BackupService
     /// Incremental by default; a Full snapshot (an independent copy sharing no packs) when the job asks for one every
     /// N days and the last one is older than that (DESIGN §13.3).
     /// </summary>
-    internal BackupMethod ChooseMethod(JobDefinition job)
+    internal BackupMethod ChooseMethod(JobDefinition job, Guid repositoryId)
     {
         if (job.Method == BackupMethod.FullSnapshot || job.FullSnapshotEveryDays <= 0)
         {
             return job.Method;
         }
 
-        var last = _app.Db.GetSetting(LastFullKey(job.Id));
+        var last = _app.Db.GetSetting(LastFullKey(repositoryId));
         return last is null || DateTimeOffset.UtcNow - DateTimeOffset.Parse(last, System.Globalization.CultureInfo.InvariantCulture) >= TimeSpan.FromDays(job.FullSnapshotEveryDays)
             ? BackupMethod.FullSnapshot
             : BackupMethod.Incremental;
     }
 
-    private static string LastFullKey(Guid jobId) => $"job.{jobId}.lastFullSnapshot";
+    // Per drive: with rotation, each drive gets its own independent full copy.
+    private static string LastFullKey(Guid repositoryId) => $"repository.{repositoryId}.lastFullSnapshot";
 
     /// <summary>macOS protects some folders (Desktop, Documents, Mail…) until the app is given Full Disk Access.</summary>
     internal static string PermissionHint(IReadOnlyList<SnapshotWarning> warnings) =>

@@ -303,9 +303,16 @@ public class ApplicationFlowTests
         var (job, ks) = Setup(f);
         f.App.Db.UpsertJob(job with { FullSnapshotEveryDays = 30 });
         job = f.App.Jobs.Get(job.Id)!;
-        Assert.Equal(BackupMethod.FullSnapshot, f.App.Backups.ChooseMethod(job));
+        var repoId = f.App.Db.RepositoriesForJob(job.Id).Single().Id;
+        Assert.Equal(BackupMethod.FullSnapshot, f.App.Backups.ChooseMethod(job, repoId));
         await f.App.Backups.RunAsync(job.Id, RunTrigger.Manual, ks.Secret.Clone());
-        Assert.Equal(BackupMethod.Incremental, f.App.Backups.ChooseMethod(job));
+        Assert.Equal(BackupMethod.Incremental, f.App.Backups.ChooseMethod(job, repoId));
+
+        // A second drive gets its own independent full copy.
+        var drive2 = Path.Combine(f.Root, "drive-full2");
+        Directory.CreateDirectory(drive2);
+        var second = f.App.Jobs.AddDestination(job.Id, drive2, ks.Secret);
+        Assert.Equal(BackupMethod.FullSnapshot, f.App.Backups.ChooseMethod(job, second.Id));
         ks.Secret.Dispose();
     }
 
