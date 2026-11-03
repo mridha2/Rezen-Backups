@@ -60,19 +60,29 @@ public sealed class RepositoryKeys : IDisposable
 {
     private const string InfoPrefix = "RezenBackup/v1/";
 
-    private readonly SecretBuffer _master;
-    private readonly SecretBuffer _content;
+    private const byte BackupOnlyBlobVersion = 1;
+    private const int BackupOnlyBlobLength = 1 + 16 + (32 * 6);
+
+    // Null in a backup-only key: such a key can add backups but cannot read file contents (DESIGN §9.5).
+    private readonly SecretBuffer? _master;
+    private readonly SecretBuffer? _content;
+    private readonly SecretBuffer? _contentPrivate;
+    private readonly byte[] _contentPublic;
     private readonly SecretBuffer _meta;
     private readonly SecretBuffer _chunkId;
     private readonly SecretBuffer _treeId;
     private readonly SecretBuffer _cdcSeed;
     private readonly SecretBuffer _check;
+    private readonly Dictionary<string, SecretBuffer> _ownObjectKeys = [];
+    private readonly object _ownGate = new();
 
     private RepositoryKeys(Guid repositoryId, SecretBuffer master)
     {
         RepositoryId = repositoryId;
         _master = master;
         _content = Expand(master, "content");
+        _contentPrivate = Expand(master, "content-x25519");
+        _contentPublic = X25519.PublicFromPrivate(_contentPrivate.ReadOnlySpan);
         _meta = Expand(master, "metadata");
         _chunkId = Expand(master, "chunk-id");
         _treeId = Expand(master, "tree-id");
@@ -80,7 +90,151 @@ public sealed class RepositoryKeys : IDisposable
         _check = Expand(master, "key-check");
     }
 
+    private RepositoryKeys(Guid repositoryId, ReadOnlySpan<byte> blob)
+    {
+        RepositoryId = repositoryId;
+        int o = 1 + 16;
+        _meta = SecretBuffer.CopyFrom(blob.Slice(o, 32));
+        _chunkId = SecretBuffer.CopyFrom(blob.Slice(o + 32, 32));
+        _treeId = SecretBuffer.CopyFrom(blob.Slice(o + 64, 32));
+        _cdcSeed = SecretBuffer.CopyFrom(blob.Slice(o + 96, 32));
+        _check = SecretBuffer.CopyFrom(blob.Slice(o + 128, 32));
+        _contentPublic = blob.Slice(o + 160, 32).ToArray();
+    }
+
     public Guid RepositoryId { get; }
+
+    /// <summary>False for a backup-only key: it can write new backups but cannot decrypt stored file contents.</summary>
+    public bool CanReadContent => _contentPrivate is not null;
+
+    /// <summary>The repository's X25519 public key that data packs are encrypted to.</summary>
+    public ReadOnlySpan<byte> ContentPublicKey => _contentPublic;
+
+    /// <summary>
+    /// Exports the keys a scheduled backup needs and nothing more: metadata, identifier, chunking and check keys plus the
+    /// content <em>public</em> key. The holder can add backups and read names/history, but not file contents.
+    /// </summary>
+    public SecretBuffer ExportBackupOnly()
+    {
+        var blob = new SecretBuffer(BackupOnlyBlobLength);
+        var b = blob.Span;
+        b[0] = BackupOnlyBlobVersion;
+        RepositoryId.TryWriteBytes(b.Slice(1, 16));
+        int o = 1 + 16;
+        _meta.ReadOnlySpan.CopyTo(b.Slice(o, 32));
+        _chunkId.ReadOnlySpan.CopyTo(b.Slice(o + 32, 32));
+        _treeId.ReadOnlySpan.CopyTo(b.Slice(o + 64, 32));
+        _cdcSeed.ReadOnlySpan.CopyTo(b.Slice(o + 96, 32));
+        _check.ReadOnlySpan.CopyTo(b.Slice(o + 128, 32));
+        _contentPublic.CopyTo(b.Slice(o + 160, 32));
+        return blob;
+    }
+
+    public static RepositoryKeys FromBackupOnly(ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length != BackupOnlyBlobLength || blob[0] != BackupOnlyBlobVersion)
+        {
+            throw new CryptoException(CryptoError.InvalidFormat, "Backup-only key is not valid.");
+        }
+
+        return new RepositoryKeys(new Guid(blob.Slice(1, 16)), blob);
+    }
+
+    /// <summary>
+    /// Creates the header of a new object. Data packs use X25519 (algorithm 2) with a fresh ephemeral key, so that even
+    /// a backup-only key can write them; the per-object key is remembered so this run can read back what it wrote.
+    /// </summary>
+    public ObjectHeader NewObjectHeader(ObjectType type)
+    {
+        if (type != ObjectType.DataPack)
+        {
+            return ObjectHeader.CreateNew(type, RepositoryId);
+        }
+
+        using var ephemeral = SecretBuffer.Random(32);
+        var ephemeralPublic = X25519.PublicFromPrivate(ephemeral.ReadOnlySpan);
+        var header = new ObjectHeader(type, RepositoryId, ephemeralPublic, ObjectHeader.DefaultSegmentSize, ObjectHeader.AlgorithmX25519Aes256GcmStream);
+        var key = new SecretBuffer(32);
+        DeriveAsymmetricObjectKey(ephemeral.ReadOnlySpan, _contentPublic, header, key.Span);
+        lock (_ownGate)
+        {
+            _ownObjectKeys[Convert.ToHexString(ephemeralPublic)] = key;
+        }
+
+        return header;
+    }
+
+    /// <summary>
+    /// Forgets the keys of data packs written by this instance. Called when a backup run ends, so a backup-only key
+    /// cannot read back contents afterwards.
+    /// </summary>
+    public void ForgetWrittenObjectKeys()
+    {
+        lock (_ownGate)
+        {
+            foreach (var k in _ownObjectKeys.Values)
+            {
+                k.Dispose();
+            }
+
+            _ownObjectKeys.Clear();
+        }
+    }
+
+    /// <summary>Derives the key of an existing object (read path; also used by writers after <see cref="NewObjectHeader"/>).</summary>
+    public void DeriveObjectKeyForRead(ObjectHeader header, Span<byte> destination)
+    {
+        if (header.RepositoryId != RepositoryId)
+        {
+            throw new CryptoException(CryptoError.InvalidFormat, "Header does not match repository keys.");
+        }
+
+        if (header.AlgorithmId == ObjectHeader.AlgorithmAes256GcmStream)
+        {
+            DeriveObjectKey(header.KeyClass, (byte)header.Type, header.ObjectSalt, destination);
+            return;
+        }
+
+        lock (_ownGate)
+        {
+            if (_ownObjectKeys.TryGetValue(Convert.ToHexString(header.ObjectSalt), out var own))
+            {
+                own.ReadOnlySpan.CopyTo(destination);
+                return;
+            }
+        }
+
+        if (_contentPrivate is null)
+        {
+            throw new CryptoException(CryptoError.WrongKey, "A backup-only key cannot read backed-up file contents. Enter your password.");
+        }
+
+        // Shared secret is symmetric: X25519(contentPrivate, ephemeralPublic) == X25519(ephemeralPrivate, contentPublic).
+        DeriveAsymmetricObjectKey(_contentPrivate.ReadOnlySpan, header.ObjectSalt, header, destination);
+    }
+
+    private void DeriveAsymmetricObjectKey(ReadOnlySpan<byte> privateScalar, ReadOnlySpan<byte> peerPublic, ObjectHeader header, Span<byte> destination)
+    {
+        Span<byte> shared = stackalloc byte[32];
+        try
+        {
+            X25519.SharedSecret(privateScalar, peerPublic, shared);
+            Span<byte> salt = stackalloc byte[64];
+            header.ObjectSalt.CopyTo(salt);
+            _contentPublic.CopyTo(salt[32..]);
+            Span<byte> info = stackalloc byte[InfoObjectX25519.Length + 1 + 16];
+            InfoObjectX25519.CopyTo(info);
+            info[InfoObjectX25519.Length] = (byte)header.Type;
+            RepositoryId.TryWriteBytes(info[(InfoObjectX25519.Length + 1)..]);
+            HKDF.DeriveKey(HashAlgorithmName.SHA256, shared, destination, salt, info);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(shared);
+        }
+    }
+
+    private static ReadOnlySpan<byte> InfoObjectX25519 => "RezenBackup/v1/object-x25519"u8;
 
     internal static RepositoryKeys Derive(RootSecret root, Guid repositoryId)
     {
@@ -111,7 +265,7 @@ public sealed class RepositoryKeys : IDisposable
 
         var ikm = keyClass switch
         {
-            KeyClass.Content => _content,
+            KeyClass.Content => _content ?? throw new CryptoException(CryptoError.WrongKey, "A backup-only key cannot read backed-up file contents. Enter your password."),
             KeyClass.Metadata => _meta,
             _ => throw new ArgumentOutOfRangeException(nameof(keyClass)),
         };
@@ -219,8 +373,19 @@ public sealed class RepositoryKeys : IDisposable
 
     public void Dispose()
     {
-        _master.Dispose();
-        _content.Dispose();
+        lock (_ownGate)
+        {
+            foreach (var k in _ownObjectKeys.Values)
+            {
+                k.Dispose();
+            }
+
+            _ownObjectKeys.Clear();
+        }
+
+        _master?.Dispose();
+        _content?.Dispose();
+        _contentPrivate?.Dispose();
         _meta.Dispose();
         _chunkId.Dispose();
         _treeId.Dispose();
@@ -300,4 +465,46 @@ public readonly struct ChunkId : IEquatable<ChunkId>, IComparable<ChunkId>
     public static bool operator >=(ChunkId left, ChunkId right) => left.CompareTo(right) >= 0;
 
     public override string ToString() => ToHex()[..16];
+}
+
+
+/// <summary>X25519 (RFC 7748) via libsodium.</summary>
+internal static class X25519
+{
+    public static unsafe byte[] PublicFromPrivate(ReadOnlySpan<byte> privateScalar)
+    {
+        Native.Sodium.EnsureInitialized();
+        var pub = new byte[32];
+        fixed (byte* q = pub)
+        fixed (byte* n = privateScalar)
+        {
+            if (Native.Sodium.crypto_scalarmult_base(q, n) != 0)
+            {
+                throw new CryptoException(CryptoError.InvalidFormat, "X25519 key generation failed.");
+            }
+        }
+
+        return pub;
+    }
+
+    public static unsafe void SharedSecret(ReadOnlySpan<byte> privateScalar, ReadOnlySpan<byte> peerPublic, Span<byte> destination)
+    {
+        if (privateScalar.Length != 32 || peerPublic.Length != 32 || destination.Length != 32)
+        {
+            throw new CryptoException(CryptoError.InvalidFormat, "Invalid X25519 input length.");
+        }
+
+        Native.Sodium.EnsureInitialized();
+        fixed (byte* q = destination)
+        fixed (byte* n = privateScalar)
+        fixed (byte* p = peerPublic)
+        {
+            // Rejects low-order points (all-zero shared secret) supplied by a tampered header.
+            if (Native.Sodium.crypto_scalarmult(q, n, p) != 0)
+            {
+                destination.Clear();
+                throw new CryptoException(CryptoError.AuthenticationFailed, "Backup integrity verification failed.");
+            }
+        }
+    }
 }

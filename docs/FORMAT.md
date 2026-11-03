@@ -60,7 +60,9 @@ On input, ignore case, spaces and hyphens. Map `O`→`0` and `I`/`L`→`1`. Reje
 
 ```text
 RMK        = HKDF(IKM = RS,  salt = repositoryId (16 bytes), info = "RezenBackup/v1/repository-master", L = 32)
-K_content  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/content",   L = 32)
+K_content  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/content",   L = 32)   (algorithm-1 data packs; not written by v1)
+P_content  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/content-x25519", L = 32)   X25519 private scalar
+Q_content  = X25519(P_content, 9)                                                     X25519 public key
 K_metadata = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/metadata",  L = 32)
 K_chunkid  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/chunk-id",  L = 32)
 K_treeid   = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/tree-id",   L = 32)
@@ -114,18 +116,26 @@ Every encrypted file or object starts with a 72-byte plaintext header:
 | 0 | 8 | magic `RZNBKOBJ` |
 | 8 | 2 | formatVersion = 1 |
 | 10 | 1 | objectType: 1 data pack, 2 metadata pack, 3 snapshot, 4 commit, 5 journal, 6 repository config, 7 local catalog cache |
-| 11 | 1 | algorithmId = 1 (AES-256-GCM STREAM, HKDF-SHA256) |
+| 11 | 1 | algorithmId: 1 = AES-256-GCM STREAM with a symmetric HKDF key; 2 = AES-256-GCM STREAM with an X25519-derived key (data packs only) |
 | 12 | 4 | segmentSize (1 048 576; readers accept 4 KiB – 16 MiB) |
 | 16 | 16 | repositoryId |
-| 32 | 32 | objectSalt (random) |
+| 32 | 32 | objectSalt (random) — for algorithm 2, the ephemeral X25519 public key E |
 | 64 | 8 | reserved, must be zero |
 
-**Object key:**
+**Object key, algorithm 1** (every object type except data packs written by v1):
 
 ```text
 K_class = K_content   for object type 1
           K_metadata  for every other object type
 K_obj   = HKDF(IKM = K_class, salt = objectSalt, info = "RezenBackup/v1/object" ‖ objectType(1 byte) ‖ repositoryId, L = 32)
+```
+
+**Object key, algorithm 2** (data packs). Each pack is written with a fresh ephemeral X25519 key pair (e, E), and E is stored in the `objectSalt` field. Writers need only `Q_content`, so a backup-only key can add data it can never read back:
+
+```text
+shared = X25519(e, Q_content)            (writer)
+       = X25519(P_content, E)            (reader; reject an all-zero result)
+K_obj  = HKDF(IKM = shared, salt = E ‖ Q_content, info = "RezenBackup/v1/object-x25519" ‖ objectType ‖ repositoryId, L = 32)
 ```
 
 **Segments:** the plaintext is split into segments of `segmentSize` bytes. The last segment may be shorter, and an empty object has exactly one empty segment. Segment *i* is stored as `ciphertext_i ‖ tag_i (16 bytes)`:

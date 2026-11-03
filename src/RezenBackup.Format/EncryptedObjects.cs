@@ -14,7 +14,7 @@ public static class EncryptedObjects
     public static byte[] Encrypt(RepositoryKeys keys, ObjectType type, ReadOnlySpan<byte> plaintext)
     {
         using var ms = new MemoryStream();
-        using (var w = new AeadStreamWriter(ms, keys, ObjectHeader.CreateNew(type, keys.RepositoryId)))
+        using (var w = new AeadStreamWriter(ms, keys, keys.NewObjectHeader(type)))
         {
             w.Write(plaintext);
             w.Complete();

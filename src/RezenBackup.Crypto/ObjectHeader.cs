@@ -23,13 +23,19 @@ public sealed class ObjectHeader
     public const int Size = 72;
     public const ushort CurrentFormatVersion = 1;
     public const byte AlgorithmAes256GcmStream = 1;
+
+    /// <summary>
+    /// Data packs encrypted to the repository's X25519 content public key: the salt field carries a fresh ephemeral
+    /// public key; the object key is HKDF of the X25519 shared secret (DESIGN §9.5 backup-only key).
+    /// </summary>
+    public const byte AlgorithmX25519Aes256GcmStream = 2;
     public const int DefaultSegmentSize = 1024 * 1024;
     public const int MinSegmentSize = 4 * 1024;
     public const int MaxSegmentSize = 16 * 1024 * 1024;
 
     private static ReadOnlySpan<byte> Magic => "RZNBKOBJ"u8;
 
-    public ObjectHeader(ObjectType type, Guid repositoryId, byte[] objectSalt, int segmentSize = DefaultSegmentSize)
+    public ObjectHeader(ObjectType type, Guid repositoryId, byte[] objectSalt, int segmentSize = DefaultSegmentSize, byte algorithmId = AlgorithmAes256GcmStream)
     {
         if (objectSalt.Length != 32)
         {
@@ -41,7 +47,7 @@ public sealed class ObjectHeader
         ObjectSalt = objectSalt;
         SegmentSize = segmentSize;
         FormatVersion = CurrentFormatVersion;
-        AlgorithmId = AlgorithmAes256GcmStream;
+        AlgorithmId = algorithmId;
     }
 
     public ushort FormatVersion { get; private init; }
@@ -98,7 +104,8 @@ public sealed class ObjectHeader
         }
 
         byte algorithm = bytes[11];
-        if (algorithm != AlgorithmAes256GcmStream)
+        bool supported = algorithm == AlgorithmAes256GcmStream || (algorithm == AlgorithmX25519Aes256GcmStream && type == ObjectType.DataPack);
+        if (!supported)
         {
             throw new CryptoException(CryptoError.UnsupportedVersion, "This backup uses an encryption algorithm this version does not support.");
         }

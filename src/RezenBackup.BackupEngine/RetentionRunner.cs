@@ -127,8 +127,10 @@ public sealed class RetentionRunner
                 packsToDelete.Add(pack.PackId);
                 reclaim += pack.Length * (pack.Kind == PackKind.Meta ? 2 : 1);
             }
-            else if (blobs.Count > 0 && liveCount * 2 < blobs.Count)
+            else if (blobs.Count > 0 && liveCount * 2 < blobs.Count && (pack.Kind == PackKind.Meta || _repo.Keys.CanReadContent))
             {
+                // Repacking a data pack needs to read its contents, which a backup-only key cannot do; the space is
+                // reclaimed by the next retention run that has the full key.
                 packsToRepack.Add(pack.PackId);
             }
         }

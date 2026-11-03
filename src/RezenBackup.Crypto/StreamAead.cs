@@ -54,7 +54,7 @@ public sealed class AeadStreamWriter : IDisposable
         _segmentSize = header.SegmentSize;
         _aad = header.ToBytes();
         Span<byte> key = stackalloc byte[32];
-        keys.DeriveObjectKey(header.KeyClass, (byte)header.Type, header.ObjectSalt, key);
+        keys.DeriveObjectKeyForRead(header, key);
         _gcm = new AesGcm(key, StreamNonce.TagSize);
         CryptographicOperations.ZeroMemory(key);
 
@@ -196,7 +196,7 @@ public sealed class AeadStreamReader : IDisposable
         PlaintextLength = ((SegmentCount - 1) * _segmentSize) + (lastSegmentCipher - StreamNonce.TagSize);
 
         Span<byte> key = stackalloc byte[32];
-        keys.DeriveObjectKey(Header.KeyClass, (byte)Header.Type, Header.ObjectSalt, key);
+        keys.DeriveObjectKeyForRead(Header, key);
         _gcm = new AesGcm(key, StreamNonce.TagSize);
         CryptographicOperations.ZeroMemory(key);
 

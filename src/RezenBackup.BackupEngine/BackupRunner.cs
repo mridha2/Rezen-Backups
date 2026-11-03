@@ -235,6 +235,7 @@ public sealed class BackupRunner
         finally
         {
             _repo.CloseReaders();
+            _repo.Keys.ForgetWrittenObjectKeys();
         }
     }
 

@@ -58,6 +58,14 @@ internal static partial class Sodium
         nuint memLimit,
         int algorithm);
 
+    /// <summary>X25519: q = n·B (public key from private scalar).</summary>
+    [LibraryImport(Library)]
+    internal static unsafe partial int crypto_scalarmult_base(byte* q, byte* n);
+
+    /// <summary>X25519: q = n·p. Returns -1 if the result is the all-zero point (low-order input).</summary>
+    [LibraryImport(Library)]
+    internal static unsafe partial int crypto_scalarmult(byte* q, byte* n, byte* p);
+
     [LibraryImport(Library)]
     internal static partial nint sodium_malloc(nuint size);
 

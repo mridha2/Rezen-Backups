@@ -611,4 +611,67 @@ public class ReviewRegressionTests
         Assert.True(File.Exists(Path.Combine(restored, "sub", "deleted-after-shadow.txt")));
         Assert.False(File.Exists(Path.Combine(restored, "created-after-shadow.txt")));
     }
+
+    /// <summary>
+    /// A backup-only key can add verified backups and apply retention, but cannot decrypt any stored file contents —
+    /// not even its own after the run (DESIGN §9.5).
+    /// </summary>
+    [Fact]
+    public async Task BackupOnlyKey_WritesBackups_ButCannotReadContents()
+    {
+        using var t = new TestRepo();
+        t.WriteFile("old-secret.txt", "deleted later but kept in history");
+        var first = await t.BackupAsync();
+        File.Delete(Path.Combine(t.Source, "old-secret.txt"));
+        t.WriteFile("new.bin", CryptoRandom.Bytes(300_000));
+
+        using var full = t.Secret.DeriveRepositoryKeys(t.Repo.RepositoryId);
+        using var blob = full.ExportBackupOnly();
+        using (var depositRepo = Repository.OpenBackupOnly(t.RepoPath, RepositoryKeys.FromBackupOnly(blob.ReadOnlySpan), Core.Platform.PortableDurableFileOps.Instance))
+        {
+            Assert.False(depositRepo.Keys.CanReadContent);
+            var r = await new BackupRunner(depositRepo).RunAsync(t.Options(level: VerificationLevel.Full) with { SnapshotLocalTime = DateTime.Now.AddSeconds(5), IndexCachePath = null });
+            Assert.Equal(RunOutcome.Success, r.Outcome);
+
+            // Names and history are readable, contents are not.
+            depositRepo.LoadIndex(null);
+            var snaps = depositRepo.LoadAllSnapshots();
+            Assert.Equal(2, snaps.Count(s => s.IsRestorable));
+            var oldTree = depositRepo.ReadTree(snaps.First().Record!.Sources[0].RootTree);
+            var oldFile = oldTree.Entries.Single(e => e.Name == "old-secret.txt");
+            Assert.ThrowsAny<Exception>(() => depositRepo.ReadBlob(oldFile.Chunks[0]));
+            foreach (var pack in Directory.EnumerateFiles(Path.Combine(t.RepoPath, "store", "data"), "*.rzp", SearchOption.AllDirectories))
+            {
+                using var fs = File.OpenRead(pack);
+                Assert.ThrowsAny<CryptoException>(() => new PackReader(fs, depositRepo.Keys, PackKind.Data));
+            }
+
+            var plan = new RetentionRunner(depositRepo).Plan(Core.Policies.RetentionPolicy.LastN(1) with { MinimumKeep = 1 }, new HashSet<Guid>(), DateTimeOffset.Now);
+            Assert.False(plan.IsBlocked);
+            Assert.Empty(plan.PacksToRepack);
+        }
+
+        // The full key (password / recovery key) restores everything, including what the backup-only key wrote.
+        t.Reopen();
+        var latest = t.Repo.LoadAllSnapshots().Last().Record!.SnapshotId;
+        var report = await t.RestoreAllAsync(latest);
+        Assert.False(report.IntegrityFailure);
+        Assert.Equal(1, report.FilesRestored);
+        var oldReport = await t.RestoreAllAsync(first.SnapshotId, Path.Combine(t.Root, "r-old"));
+        Assert.Equal(1, oldReport.FilesRestored);
+    }
+
+    [Fact]
+    public void BackupOnlyKey_ExportContainsNoContentSecret()
+    {
+        using var root = RootSecret.Generate();
+        using var keys = root.DeriveRepositoryKeys(CryptoRandom.NewId());
+        using var blob = keys.ExportBackupOnly();
+        using var restored = RepositoryKeys.FromBackupOnly(blob.ReadOnlySpan);
+        Assert.False(restored.CanReadContent);
+        Assert.True(keys.CanReadContent);
+        Assert.Equal(keys.ContentPublicKey.ToArray(), restored.ContentPublicKey.ToArray());
+        Assert.Equal(keys.ComputeKeyCheck(), restored.ComputeKeyCheck());
+        Assert.True(blob.ReadOnlySpan.IndexOf(root.Bytes) < 0);
+    }
 }

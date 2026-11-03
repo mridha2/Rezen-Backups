@@ -153,6 +153,41 @@ public sealed class Repository : IDisposable
     }
 
     /// <summary>
+    /// Opens a repository with a backup-only key (DESIGN §9.5): new backups can be written, names and history can be
+    /// read, but stored file contents cannot be decrypted. Takes ownership of <paramref name="keys"/>.
+    /// </summary>
+    public static Repository OpenBackupOnly(string path, RepositoryKeys keys, IDurableFileOps ops)
+    {
+        var layout = new RepositoryLayout(path);
+        var info = ReadInfo(path);
+        if (info.RepositoryId != keys.RepositoryId)
+        {
+            keys.Dispose();
+            throw new RezenException(ErrorCode.WrongPassword, "The backup-only key belongs to a different backup.");
+        }
+
+        try
+        {
+            RepositoryConfig config;
+            try
+            {
+                config = RepositoryConfigFile.ReadConfig(layout.ConfigPath, keys);
+            }
+            catch (CryptoException ex) when (ex.Error == CryptoError.AuthenticationFailed)
+            {
+                throw new RezenException(ErrorCode.WrongPassword, null, ex);
+            }
+
+            return new Repository(layout, info, keys, config, ops);
+        }
+        catch
+        {
+            keys.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Unlocks the Root Secret from the repository's key files using a password. Tries every copy; repairs damaged,
     /// missing or out-of-date copies from the one that worked (DESIGN §8.1).
     /// </summary>

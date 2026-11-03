@@ -152,7 +152,7 @@ public static class PackFormat
         try
         {
             using var ms = new MemoryStream(plain.Length + (plain.Length / ObjectHeader.DefaultSegmentSize * 16) + 256);
-            using (var w = new AeadStreamWriter(ms, keys, ObjectHeader.CreateNew(ObjectTypeFor(builder.Kind), keys.RepositoryId)))
+            using (var w = new AeadStreamWriter(ms, keys, keys.NewObjectHeader(ObjectTypeFor(builder.Kind))))
             {
                 w.Write(plain);
                 w.Complete();

@@ -75,6 +75,15 @@ internal static class SnapshotVerifier
         foreach (var file in walker.FilesRead)
         {
             ct.ThrowIfCancellationRequested();
+
+            // A backup-only key can read back what this run wrote, but not older data it deduplicated against; that
+            // older data was verified when it was written, and this file still gets Standard verification.
+            if (!repo.Keys.CanReadContent && file.Chunks.Any(c => !writer.ThisRunLocations.ContainsKey(c)))
+            {
+                progress.FilesDone++;
+                continue;
+            }
+
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             long size = 0;
             foreach (var chunkId in file.Chunks)
