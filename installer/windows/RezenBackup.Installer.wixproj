@@ -1,0 +1,13 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <!-- Built on Windows by build.ps1. Not part of RezenBackup.slnx (needs the WiX SDK, Windows only). -->
+  <PropertyGroup>
+    <OutputName>RezenBackup-$(ProductVersion)-x64</OutputName>
+    <Platform>x64</Platform>
+    <DefineConstants>ProductVersion=$(ProductVersion);StageDir=$(StageDir)</DefineConstants>
+    <SuppressValidation>false</SuppressValidation>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+</Project>

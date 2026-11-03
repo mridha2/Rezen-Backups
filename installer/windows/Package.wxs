@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rezen Backup MSI (DESIGN §24, spec §78).
+  - Per-machine install into Program Files with the .NET runtime included (nothing is downloaded).
+  - RezenBackupService: the optional, minimal VSS helper (LocalSystem; creates/deletes shadow copies only).
+  - The per-user background agent starts at sign-in for every user via the machine Run key and runs as that user.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Rezen Backup"
+           Manufacturer="Rezen"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="6C3B1E0A-4E52-4D0A-9F5C-2E7D5B8A9C41"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Rezen Backup is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="RezenIcon" SourceFile="..\..\src\RezenBackup.UI\Assets\rezen.ico" />
+    <Property Id="ARPPRODUCTICON" Value="RezenIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Rezen Backup">
+        <Directory Id="SERVICEFOLDER" Name="Service" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="PROGRAMDATAFOLDER" Name="Rezen Backup" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="App" Title="Rezen Backup" Description="The Rezen Backup application, background protection and command-line tool." Level="1" AllowAbsent="no">
+      <Files Directory="INSTALLFOLDER" Include="$(var.StageDir)\app\**" />
+
+      <Component Id="StartMenuShortcut" Directory="INSTALLFOLDER" Guid="9B2E7C51-0A6F-4C1E-8E24-73D9F1A06B12">
+        <Shortcut Id="AppShortcut" Directory="ProgramMenuFolder" Name="Rezen Backup" Target="[INSTALLFOLDER]RezenBackup.exe" WorkingDirectory="INSTALLFOLDER" Icon="RezenIcon" />
+        <RegistryValue Root="HKLM" Key="Software\Rezen\Rezen Backup" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+      </Component>
+
+      <!-- Per-user background agent at sign-in (runs as each user, never as SYSTEM). -->
+      <Component Id="AgentAutostart" Directory="INSTALLFOLDER" Guid="E5A1C3D7-6B2F-4F8A-9D10-4C7B8E2F1A63">
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="Rezen Backup Agent" Type="string" Value="&quot;[INSTALLFOLDER]RezenBackup.exe&quot; --agent" KeyPath="yes" />
+      </Component>
+
+      <!-- Machine data folder used only by the VSS helper: SYSTEM and Administrators only. -->
+      <Component Id="ProgramDataFolder" Directory="PROGRAMDATAFOLDER" Guid="2F6D8B4A-1C9E-4A73-B5E0-8D3C7A1F9E24">
+        <CreateFolder>
+          <util:PermissionEx User="SYSTEM" GenericAll="yes" />
+          <util:PermissionEx User="Administrators" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+    </Feature>
+
+    <Feature Id="Vss" Title="Back up open and locked files (Volume Shadow Copy)"
+             Description="Installs RezenBackupService, a small helper that creates temporary Volume Shadow Copies so files in use (e.g. Outlook data files) can be backed up. It never reads your files or encryption keys." Level="1">
+      <Files Directory="SERVICEFOLDER" Include="$(var.StageDir)\service\**">
+        <Exclude Files="$(var.StageDir)\service\RezenBackupService.exe" />
+      </Files>
+      <Component Id="VssService" Directory="SERVICEFOLDER" Guid="7D4A2E91-3B6C-4E85-A0F2-9C1B5D8E3A76">
+        <File Id="RezenBackupServiceExe" Source="$(var.StageDir)\service\RezenBackupService.exe" KeyPath="yes" />
+        <ServiceInstall Id="RezenBackupServiceInstall"
+                        Name="RezenBackupService"
+                        DisplayName="Rezen Backup Shadow Copy Helper"
+                        Description="Creates temporary Volume Shadow Copies for Rezen Backup so files in use can be backed up. Does not read files or encryption keys."
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Vital="yes">
+          <util:ServiceConfig FirstFailureActionType="restart" SecondFailureActionType="restart" ThirdFailureActionType="none" RestartServiceDelayInSeconds="30" />
+        </ServiceInstall>
+        <ServiceControl Id="RezenBackupServiceControl" Name="RezenBackupService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>
