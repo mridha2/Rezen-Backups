@@ -590,4 +590,25 @@ public class ReviewRegressionTests
         Assert.Equal("a\\b.txt", decoded.Entries.Single().Name);
         Assert.Throws<CryptoException>(() => TreeNode.Decode(new TreeNode([new TreeEntry { Name = "..", Kind = Core.Domain.EntryKind.File }]).Encode()));
     }
+
+    /// <summary>With a point-in-time view, the folder listing also comes from the snapshot.</summary>
+    [Fact]
+    public async Task PointInTimeView_ListsFoldersFromTheSnapshot()
+    {
+        using var t = new TestRepo();
+        var shadow = Path.Combine(t.Root, "shadow2");
+        Directory.CreateDirectory(Path.Combine(shadow, "sub"));
+        File.WriteAllText(Path.Combine(shadow, "sub", "deleted-after-shadow.txt"), "was there");
+        t.WriteFile("created-after-shadow.txt", "new");
+        Directory.CreateDirectory(Path.Combine(t.Source, "sub"));
+
+        var result = await new BackupRunner(t.Repo, snapshots: new FakeShadowProvider(t.Source, shadow)).RunAsync(t.Options());
+        Assert.Equal(RunOutcome.Success, result.Outcome);
+        t.Reopen();
+        var target = Path.Combine(t.Root, "r-pit");
+        await t.RestoreAllAsync(result.SnapshotId, target);
+        var restored = Path.Combine(target, "Company Documents");
+        Assert.True(File.Exists(Path.Combine(restored, "sub", "deleted-after-shadow.txt")));
+        Assert.False(File.Exists(Path.Combine(restored, "created-after-shadow.txt")));
+    }
 }

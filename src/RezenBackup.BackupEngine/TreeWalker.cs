@@ -262,8 +262,10 @@ internal sealed class TreeWalker
         List<FileSystemInfo> children;
         try
         {
+            // With a point-in-time view, list the folder from the snapshot too, so the listing matches the contents read.
+            var listDir = _view.IsPointInTimeFor(dir.FullName) ? new DirectoryInfo(_view.MapForReading(dir.FullName)) : dir;
             var opts = new EnumerationOptions { IgnoreInaccessible = false, RecurseSubdirectories = false, AttributesToSkip = 0, ReturnSpecialDirectories = false };
-            children = dir.EnumerateFileSystemInfos("*", opts).ToList();
+            children = listDir.EnumerateFileSystemInfos("*", opts).ToList();
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -281,6 +283,7 @@ internal sealed class TreeWalker
             return null;
         }
 
+        bool pointInTime = _view.IsPointInTimeFor(dir.FullName);
         var prevByName = previous?.Entries.ToDictionary(e => e.Name, StringComparer.Ordinal) ?? [];
         var entries = new List<TreeEntry>(children.Count);
         foreach (var child in children.OrderBy(c => c.Name, StringComparer.Ordinal))
@@ -292,17 +295,20 @@ internal sealed class TreeWalker
             {
                 entry = LinkEntry(child);
             }
-            else if (child is DirectoryInfo sub)
+            else if (child is DirectoryInfo listed)
             {
+                // Always work with the original path; reads are mapped to the snapshot by the view.
+                var sub = pointInTime ? new DirectoryInfo(Path.Combine(dir.FullName, child.Name)) : listed;
                 if (_exclusions.IsExcludedDirectory(sub.FullName, sub.Name))
                 {
                     continue;
                 }
 
-                entry = DirectoryEntry(sub, prevEntry);
+                entry = DirectoryEntry(sub, prevEntry, listed);
             }
-            else if (child is FileInfo file)
+            else if (child is FileInfo listedFile)
             {
+                var file = pointInTime ? new FileInfo(Path.Combine(dir.FullName, child.Name)) : listedFile;
                 if (_exclusions.IsExcludedFile(file.FullName, file.Name))
                 {
                     continue;
@@ -327,7 +333,7 @@ internal sealed class TreeWalker
         return id;
     }
 
-    private TreeEntry? DirectoryEntry(DirectoryInfo sub, TreeEntry? prevEntry)
+    private TreeEntry? DirectoryEntry(DirectoryInfo sub, TreeEntry? prevEntry, FileSystemInfo metadataSource)
     {
         TreeNode? prevSubtree = prevEntry is { Kind: EntryKind.Directory, Subtree: { } st } ? TryReadTree(st) : null;
         var subId = ProcessDirectory(sub, prevSubtree);
@@ -344,7 +350,7 @@ internal sealed class TreeWalker
         }
 
         Directories++;
-        var info = SafeInfo(sub.FullName, sub);
+        var info = SafeInfo(metadataSource.FullName, metadataSource);
         return new TreeEntry
         {
             Name = sub.Name,
