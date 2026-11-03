@@ -54,6 +54,14 @@
         "resolved": "10.0.14",
         "contentHash": "eHnlBHHk6ft/5TsuZPtz9xgxKFIILf3nA+yKVZaKmJ7GCHpz8nd4cjnMys5NQF3PvBpWcb0u01LNR2jX9jrRFw=="
       }
+    },
+    "net10.0/win-x64": {
+      "libsodium": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.21, )",
+        "resolved": "1.0.21",
+        "contentHash": "mdyeeMBfV0OfB6BDKriUZmEAL2Jm8FR1ic/IBpxkflv4kyV8lXgplzQ9J9cUtjR2jl5Fvc2mxmSloXoZeAlcPA=="
+      }
     }
   }
 }
