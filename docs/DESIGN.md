@@ -1286,3 +1286,35 @@ The product requirement now includes macOS. Everything in Sections 4–20 (crypt
 - When restoring onto Windows, characters that Windows does not allow (`< > : " | ? *`, trailing dots and spaces, reserved names such as `CON`) are replaced with visible substitutes. Each renamed file is listed in the restore report, so nothing is renamed silently.
 - Windows attributes are restored only on Windows. POSIX permission bits are restored only on macOS.
 - The password is NFC-normalized (§5.3), so the same passphrase works on both systems.
+
+---
+
+## 30. Implementation notes (v1 as built)
+
+Where the implementation differs from the plan above, this section takes precedence.
+
+| Topic | As built | Reason |
+|---|---|---|
+| Background agent (§1.1) | The desktop executable itself in `--agent` mode, with a tray / menu-bar icon. Starts at sign-in via a LaunchAgent (macOS), the MSI's machine `Run` key, or the user's `Run` key (Windows). | One executable keeps macOS Keychain access rules simple, because the item creator and reader are the same binary. Creating a logon task through Task Scheduler needs admin rights; the `Run` key does not. |
+| Catalog session (§18.2) | Trees are decrypted on demand into an in-memory tree cache, searched with LINQ, and dropped on lock. | Simpler than an in-memory SQLite database, with the same security property: decrypted names never touch disk. |
+| Previous-snapshot trees for change detection (§13.2) | Read from the drive's metadata packs, which are connected during a backup. No local encrypted tree cache. | Less code; the encrypted chunk-index cache gives most of the speed-up. |
+| Local database (§23.2) | Jobs are stored as a JSON `definition_json` column rather than separate source and exclusion tables. | Same information, simpler migrations. |
+| Argon2 read bounds (§5.1) | Readers accept *m* ≥ 8 MiB. New slots require *m* ≥ 256 MiB and *t* ≥ 3 outside the test suite. | Lowering the parameters in a stored slot cannot help an attacker (unwrapping fails), so the read floor only needs to block DoS. |
+| Windows notifications | `Shell_NotifyIcon` balloon. | No package identity or WinRT dependency. |
+| macOS notifications | `osascript display notification`. | Works without an app-bundle notification entitlement. |
+| Run-issue paths (spec §68) | Sealed with the repository key (AES-256-GCM, per-value HKDF key) in `run_issues.path_sealed`. Shown only after unlocking. | File names never sit in the local database in plaintext. |
+
+**Deferred (not in v1, format already allows them):**
+
+- Write-only scheduled key and TPM binding (§9.5).
+- Drive rotation with several drives per job (§21.2).
+- Optional NTFS ACL lockdown of the backup folder (§21.3).
+- Automatic "full snapshot every N days" (the field exists; the method is selected per job).
+
+**Verification status of platform code:**
+
+| Area | Status |
+|---|---|
+| Crypto, format, engines, application layer, CLI and UI | Tested on macOS (arm64). |
+| macOS Keychain, `F_FULLFSYNC` / `F_NOCACHE`, `lstat` metadata | Exercised by tests on macOS. |
+| Windows-specific code (DPAPI, `FILE_FLAG_NO_BUFFERING`, `MoveFileEx`, VSS helper service, notifications, eject, MSI) | Compiles and cross-publishes for `win-x64`, but has not yet been run on Windows. CI runs the suite on `windows-latest`. Spike S1 (shadow-copy access as a standard user) is still open. |
