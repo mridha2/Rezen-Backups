@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RezenBackup.Agent/RezenBackup.Agent.csproj" />
+    <Project Path="src/RezenBackup.Application/RezenBackup.Application.csproj" />
+    <Project Path="src/RezenBackup.BackupEngine/RezenBackup.BackupEngine.csproj" />
+    <Project Path="src/RezenBackup.Cli/RezenBackup.Cli.csproj" />
+    <Project Path="src/RezenBackup.Core/RezenBackup.Core.csproj" />
+    <Project Path="src/RezenBackup.Crypto/RezenBackup.Crypto.csproj" />
+    <Project Path="src/RezenBackup.Database/RezenBackup.Database.csproj" />
+    <Project Path="src/RezenBackup.DriveMonitor/RezenBackup.DriveMonitor.csproj" />
+    <Project Path="src/RezenBackup.Format/RezenBackup.Format.csproj" />
+    <Project Path="src/RezenBackup.Logging/RezenBackup.Logging.csproj" />
+    <Project Path="src/RezenBackup.Platform/RezenBackup.Platform.csproj" />
+    <Project Path="src/RezenBackup.RestoreEngine/RezenBackup.RestoreEngine.csproj" />
+    <Project Path="src/RezenBackup.Scheduler/RezenBackup.Scheduler.csproj" />
+    <Project Path="src/RezenBackup.Security/RezenBackup.Security.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RezenBackup.Tests/RezenBackup.Tests.csproj" />
+  </Folder>
+</Solution>
