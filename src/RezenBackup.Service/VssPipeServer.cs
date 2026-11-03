@@ -19,6 +19,39 @@ namespace RezenBackup.Service;
 public sealed class VssPipeServer(ShadowCopyManager shadows, ILogger<VssPipeServer> logger) : BackgroundService
 {
     private const int MaxShadowsPerConnection = 8;
+    private const int MaxShadowsPerUser = 8;
+    private const int MaxShadowsTotal = 16;
+    private static readonly Dictionary<string, int> PerUser = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object CountGate = new();
+    private static int _total;
+
+    private static bool TryReserve(string user)
+    {
+        lock (CountGate)
+        {
+            int mine = PerUser.GetValueOrDefault(user);
+            if (_total >= MaxShadowsTotal || mine >= MaxShadowsPerUser)
+            {
+                return false;
+            }
+
+            PerUser[user] = mine + 1;
+            _total++;
+            return true;
+        }
+    }
+
+    private static void Release(string user)
+    {
+        lock (CountGate)
+        {
+            if (PerUser.TryGetValue(user, out int mine) && mine > 0)
+            {
+                PerUser[user] = mine - 1;
+                _total--;
+            }
+        }
+    }
     private static readonly TimeSpan MaxLifetime = TimeSpan.FromHours(12);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -96,6 +129,12 @@ public sealed class VssPipeServer(ShadowCopyManager shadows, ILogger<VssPipeServ
                         response = new VssProtocol.Response(false, Error: "Too many shadow copies.");
                         break;
                     case "create" when ShadowCopyManager.IsValidVolume(request.Volume):
+                        if (!TryReserve(user))
+                        {
+                            response = new VssProtocol.Response(false, Error: "Too many shadow copies are in use.");
+                            break;
+                        }
+
                         try
                         {
                             var (id, device) = shadows.Create(request.Volume!);
@@ -104,6 +143,7 @@ public sealed class VssPipeServer(ShadowCopyManager shadows, ILogger<VssPipeServ
                         }
                         catch (Exception ex) when (ex is InvalidOperationException or System.Management.ManagementException or UnauthorizedAccessException)
                         {
+                            Release(user);
                             response = new VssProtocol.Response(false, Error: ex.Message);
                         }
 
@@ -111,6 +151,7 @@ public sealed class VssPipeServer(ShadowCopyManager shadows, ILogger<VssPipeServ
                     case "release" when request.ShadowId is { } sid && owned.Contains(sid, StringComparer.OrdinalIgnoreCase):
                         shadows.Delete(sid);
                         owned.RemoveAll(x => string.Equals(x, sid, StringComparison.OrdinalIgnoreCase));
+                        Release(user);
                         response = new VssProtocol.Response(true);
                         break;
                     case "list":
@@ -133,6 +174,7 @@ public sealed class VssPipeServer(ShadowCopyManager shadows, ILogger<VssPipeServ
             foreach (var id in owned)
             {
                 shadows.Delete(id);
+                Release(user);
             }
 
             await pipe.DisposeAsync();

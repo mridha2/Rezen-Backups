@@ -1,5 +1,7 @@
 using System.Management;
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
@@ -22,6 +24,45 @@ public sealed partial class ShadowCopyManager
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Rezen Backup");
         Directory.CreateDirectory(dir);
         _registry = Path.Combine(dir, "vss-shadows.txt");
+        Protect(dir);
+    }
+
+    private static readonly SecurityIdentifier SystemSid = new(WellKnownSidType.LocalSystemSid, null);
+    private static readonly SecurityIdentifier Admins = new(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+    /// <summary>
+    /// Only SYSTEM and Administrators may write the service's data folder, and a registry file created by anyone else
+    /// is discarded — so an unprivileged user can never make this service delete shadow copies it did not create.
+    /// </summary>
+    private void Protect(string dir)
+    {
+        try
+        {
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            foreach (var sid in new[] { SystemSid, Admins })
+            {
+                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            }
+
+            security.SetOwner(SystemSid);
+            new DirectoryInfo(dir).SetAccessControl(security);
+
+            if (File.Exists(_registry))
+            {
+                var owner = new FileInfo(_registry).GetAccessControl().GetOwner(typeof(SecurityIdentifier));
+                if (owner is null || !(owner.Equals(SystemSid) || owner.Equals(Admins)))
+                {
+                    _logger.LogWarning("Discarding a shadow-copy registry not created by this service.");
+                    File.Delete(_registry);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or InvalidOperationException)
+        {
+            _logger.LogWarning("Could not secure the service data folder: {Message}", ex.Message);
+        }
     }
 
     [GeneratedRegex(@"^[A-Za-z]:\\$", RegexOptions.CultureInvariant)]
@@ -83,7 +124,12 @@ public sealed partial class ShadowCopyManager
             {
                 using (mo)
                 {
-                    mo.Delete();
+                    // This service only ever creates client-accessible shadow copies; never touch any other kind
+                    // (System Restore points, backup software).
+                    if (mo["ClientAccessible"] is bool clientAccessible && clientAccessible)
+                    {
+                        mo.Delete();
+                    }
                 }
             }
 
