@@ -70,6 +70,7 @@ public sealed partial class JobEditorViewModel : PageViewModel
         RetentionIndex = Math.Max(0, Array.FindIndex(RetentionChoices, c => c.Policy.Describe() == _original.Retention.Describe()));
         FullVerification = _original.Verification == VerificationLevel.Full;
         FullSnapshot = _original.Method == BackupMethod.FullSnapshot;
+        FullEveryIndex = _original.FullSnapshotEveryDays switch { <= 0 => 0, <= 30 => 1, _ => 2 };
         AutoRunOnConnect = _original.AutoRunOnConnect;
         EjectAfter = _original.EjectAfterBackup;
         SkipOnBattery = _original.SkipOnBattery;
@@ -148,6 +149,11 @@ public sealed partial class JobEditorViewModel : PageViewModel
 
     [ObservableProperty]
     private bool _fullSnapshot;
+
+    [ObservableProperty]
+    private int _fullEveryIndex;
+
+    public IReadOnlyList<string> FullEveryOptions { get; } = ["Never", "Every 30 days", "Every 90 days"];
 
     [ObservableProperty]
     private bool _autoRunOnConnect;
@@ -316,6 +322,7 @@ public sealed partial class JobEditorViewModel : PageViewModel
                 Retention = retention,
                 Verification = FullVerification ? VerificationLevel.Full : VerificationLevel.Standard,
                 Method = FullSnapshot ? BackupMethod.FullSnapshot : BackupMethod.Incremental,
+                FullSnapshotEveryDays = FullEveryIndex switch { 1 => 30, 2 => 90, _ => 0 },
                 AutoRunOnConnect = AutoRunOnConnect,
                 EjectAfterBackup = EjectAfter,
                 SkipOnBattery = SkipOnBattery,

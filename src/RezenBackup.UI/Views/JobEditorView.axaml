@@ -127,6 +127,11 @@
             <TextBlock Classes="label" TextWrapping="Wrap" Text="Old snapshots are removed only after a newer backup has been verified, and the 3 most recent snapshots are always kept." />
             <CheckBox Content="Full verification (re-read every new file from the drive and compare it with the original)" IsChecked="{Binding FullVerification}" />
             <CheckBox Content="Full snapshots (write an independent copy each run instead of only changes — uses more space)" IsChecked="{Binding FullSnapshot}" />
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !FullSnapshot}">
+              <TextBlock Text="Also write an independent full copy" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding FullEveryOptions}" SelectedIndex="{Binding FullEveryIndex}" Width="180" />
+            </StackPanel>
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="An independent copy shares no data with other snapshots, so damage to one part of the drive cannot affect every version." />
           </StackPanel>
         </Border>
       </StackPanel>

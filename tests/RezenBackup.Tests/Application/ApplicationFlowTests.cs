@@ -294,4 +294,17 @@ public class ApplicationFlowTests
         Assert.NotNull(ok.OpenCatalog(job.Id));
         ks.Secret.Dispose();
     }
+
+    [Fact]
+    public async Task PeriodicFullSnapshot_RunsWhenDue_ThenIncremental()
+    {
+        using var f = new AppFixture();
+        var (job, ks) = Setup(f);
+        f.App.Db.UpsertJob(job with { FullSnapshotEveryDays = 30 });
+        job = f.App.Jobs.Get(job.Id)!;
+        Assert.Equal(BackupMethod.FullSnapshot, f.App.Backups.ChooseMethod(job));
+        await f.App.Backups.RunAsync(job.Id, RunTrigger.Manual, ks.Secret.Clone());
+        Assert.Equal(BackupMethod.Incremental, f.App.Backups.ChooseMethod(job));
+        ks.Secret.Dispose();
+    }
 }

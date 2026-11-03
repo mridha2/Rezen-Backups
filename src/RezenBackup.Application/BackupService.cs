@@ -183,6 +183,10 @@ public sealed class BackupService
                 Anomaly = result.AnomalyDetected,
             };
             _app.Db.UpsertSnapshot(snapshot);
+            if (method == BackupMethod.FullSnapshot)
+            {
+                _app.Db.SetSetting(LastFullKey(job.Id), DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            }
             if (result.Warnings.Count > 0)
             {
                 _app.Db.UpsertRun(row with { SnapshotId = result.SnapshotId });
@@ -281,7 +285,24 @@ public sealed class BackupService
         }
     }
 
-    private static BackupMethod ChooseMethod(JobDefinition job) => job.Method;
+    /// <summary>
+    /// Incremental by default; a Full snapshot (an independent copy sharing no packs) when the job asks for one every
+    /// N days and the last one is older than that (DESIGN §13.3).
+    /// </summary>
+    internal BackupMethod ChooseMethod(JobDefinition job)
+    {
+        if (job.Method == BackupMethod.FullSnapshot || job.FullSnapshotEveryDays <= 0)
+        {
+            return job.Method;
+        }
+
+        var last = _app.Db.GetSetting(LastFullKey(job.Id));
+        return last is null || DateTimeOffset.UtcNow - DateTimeOffset.Parse(last, System.Globalization.CultureInfo.InvariantCulture) >= TimeSpan.FromDays(job.FullSnapshotEveryDays)
+            ? BackupMethod.FullSnapshot
+            : BackupMethod.Incremental;
+    }
+
+    private static string LastFullKey(Guid jobId) => $"job.{jobId}.lastFullSnapshot";
 
     /// <summary>macOS protects some folders (Desktop, Documents, Mail…) until the app is given Full Disk Access.</summary>
     internal static string PermissionHint(IReadOnlyList<SnapshotWarning> warnings) =>
