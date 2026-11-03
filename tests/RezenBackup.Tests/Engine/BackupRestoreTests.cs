@@ -462,3 +462,30 @@ public class KeyManagementTests
         }
     }
 }
+
+public class ReviewRegressionTests
+{
+    /// <summary>A file whose bytes equal an encoded tree must not collide with that tree (review finding 2).</summary>
+    [Fact]
+    public async Task FileWithTreeLikeContent_DoesNotCollideWithTrees()
+    {
+        using var t = new TestRepo();
+        var emptyTree = new TreeNode([]).Encode();
+        var payload = "tree"u8.ToArray().Concat(emptyTree).ToArray();
+        t.WriteFile("evil.bin", payload);
+        t.WriteFile("plain.bin", emptyTree);
+        Directory.CreateDirectory(Path.Combine(t.Source, "EmptyFolder"));
+
+        var first = await t.BackupAsync();
+        Assert.Equal(RunOutcome.Success, first.Outcome);
+        var second = await t.BackupAsync(t.Options() with { SnapshotLocalTime = DateTime.Now.AddSeconds(3) });
+        Assert.Equal(RunOutcome.Success, second.Outcome);
+
+        t.Reopen();
+        var report = await t.RestoreAllAsync(second.SnapshotId);
+        Assert.False(report.IntegrityFailure);
+        Assert.Equal(payload, File.ReadAllBytes(Path.Combine(t.RestoreTarget, "Company Documents", "evil.bin")));
+        Assert.Equal(emptyTree, File.ReadAllBytes(Path.Combine(t.RestoreTarget, "Company Documents", "plain.bin")));
+        Assert.True(Directory.Exists(Path.Combine(t.RestoreTarget, "Company Documents", "EmptyFolder")));
+    }
+}

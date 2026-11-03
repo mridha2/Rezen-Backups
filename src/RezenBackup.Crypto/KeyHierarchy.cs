@@ -64,6 +64,7 @@ public sealed class RepositoryKeys : IDisposable
     private readonly SecretBuffer _content;
     private readonly SecretBuffer _meta;
     private readonly SecretBuffer _chunkId;
+    private readonly SecretBuffer _treeId;
     private readonly SecretBuffer _cdcSeed;
     private readonly SecretBuffer _check;
 
@@ -74,6 +75,7 @@ public sealed class RepositoryKeys : IDisposable
         _content = Expand(master, "content");
         _meta = Expand(master, "metadata");
         _chunkId = Expand(master, "chunk-id");
+        _treeId = Expand(master, "tree-id");
         _cdcSeed = Expand(master, "cdc-seed");
         _check = Expand(master, "key-check");
     }
@@ -131,14 +133,14 @@ public sealed class RepositoryKeys : IDisposable
         return new ChunkId(mac);
     }
 
-    /// <summary>Keyed identifier for tree objects, domain-separated from data chunks.</summary>
+    /// <summary>
+    /// Keyed identifier for tree objects. Uses its own key (not just a prefix under the chunk key), so no file content can
+    /// ever produce the identifier of a tree, and vice versa.
+    /// </summary>
     public ChunkId ComputeTreeId(ReadOnlySpan<byte> canonicalTree)
     {
-        using var hmac = IncrementalHash.CreateHMAC(HashAlgorithmName.SHA256, _chunkId.ReadOnlySpan);
-        hmac.AppendData("tree"u8);
-        hmac.AppendData(canonicalTree);
         Span<byte> mac = stackalloc byte[32];
-        hmac.GetHashAndReset(mac);
+        HMACSHA256.HashData(_treeId.ReadOnlySpan, canonicalTree, mac);
         return new ChunkId(mac);
     }
 
@@ -221,6 +223,7 @@ public sealed class RepositoryKeys : IDisposable
         _content.Dispose();
         _meta.Dispose();
         _chunkId.Dispose();
+        _treeId.Dispose();
         _cdcSeed.Dispose();
         _check.Dispose();
     }

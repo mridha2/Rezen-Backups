@@ -63,6 +63,7 @@ RMK        = HKDF(IKM = RS,  salt = repositoryId (16 bytes), info = "RezenBackup
 K_content  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/content",   L = 32)
 K_metadata = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/metadata",  L = 32)
 K_chunkid  = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/chunk-id",  L = 32)
+K_treeid   = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/tree-id",   L = 32)
 K_cdc      = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/cdc-seed",  L = 32)
 K_check    = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/key-check", L = 32)
 ```
@@ -70,7 +71,7 @@ K_check    = HKDF-Expand(PRK = RMK, info = "RezenBackup/v1/key-check", L = 32)
 | Value | Definition |
 |---|---|
 | Data chunk ID | `HMAC(K_chunkid, chunkPlaintext)` |
-| Tree ID | `HMAC(K_chunkid, "tree" ‖ treeCborBytes)` |
+| Tree ID | `HMAC(K_treeid, treeCborBytes)` — a separate key, so file content can never collide with a tree |
 | Key check | `HMAC(K_check, "key-check" ‖ repositoryId)`, first 16 bytes |
 
 ### 3.3 Key files (`*.rzk`)
