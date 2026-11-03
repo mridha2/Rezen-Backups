@@ -557,4 +557,37 @@ public class ReviewRegressionTests
         Assert.Equal("NEW", File.ReadAllText(Path.Combine(target2, "Company Documents", "doc.txt")));
         _ = live;
     }
+
+    /// <summary>Restore must not write through a symbolic link at the destination (review finding 6).</summary>
+    [Fact]
+    public async Task Restore_DoesNotFollowExistingSymlinkAtDestination()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // creating symlinks needs a privilege on Windows
+        }
+
+        using var t = new TestRepo();
+        t.WriteFile("sub/secret.txt", "data");
+        var r = await t.BackupAsync();
+        var outside = Path.Combine(t.Root, "outside");
+        Directory.CreateDirectory(outside);
+        var dest = Path.Combine(t.RestoreTarget, "Company Documents");
+        Directory.CreateDirectory(dest);
+        Directory.CreateSymbolicLink(Path.Combine(dest, "sub"), outside);
+
+        var report = await t.RestoreAllAsync(r.SnapshotId);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(outside));
+        Assert.Contains(report.Issues, i => i.Message.Contains("symbolic link", StringComparison.Ordinal));
+    }
+
+    /// <summary>Names valid on macOS but not Windows must not make a whole folder unreadable (review finding 7).</summary>
+    [Fact]
+    public void TreeWithBackslashInName_DecodesOnEveryPlatform()
+    {
+        var tree = new TreeNode([new TreeEntry { Name = "a\\b.txt", Kind = Core.Domain.EntryKind.File }]);
+        var decoded = TreeNode.Decode(tree.Encode());
+        Assert.Equal("a\\b.txt", decoded.Entries.Single().Name);
+        Assert.Throws<CryptoException>(() => TreeNode.Decode(new TreeNode([new TreeEntry { Name = "..", Kind = Core.Domain.EntryKind.File }]).Encode()));
+    }
 }

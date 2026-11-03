@@ -98,6 +98,12 @@ public sealed class RestoreExecutor
             RestoreItem(item.Entry, target, state, ct);
         }
 
+        // Links are created last, so no file of this restore can ever be written through one of them.
+        foreach (var (linkPath, linkTarget) in state.PendingLinks)
+        {
+            CreateLink(linkPath, linkTarget, state);
+        }
+
         progress?.Report(new RestoreProgress(state.FilesDone, totalFiles, state.BytesDone, totalBytes, null));
         return new RestoreReport
         {
@@ -185,6 +191,8 @@ public sealed class RestoreExecutor
         public List<RestoreIssue> Issues { get; } = [];
 
         public List<(string, string)> Renamed { get; } = [];
+
+        public List<(string Path, string Target)> PendingLinks { get; } = [];
     }
 
     private void RestoreItem(TreeEntry entry, string target, State state, CancellationToken ct)
@@ -198,7 +206,7 @@ public sealed class RestoreExecutor
                 RestoreFile(entry, target, state, ct);
                 break;
             case EntryKind.Link when entry.LinkTarget is { } linkTarget:
-                RestoreLink(target, linkTarget, state);
+                state.PendingLinks.Add((target, linkTarget));
                 break;
         }
     }
@@ -215,6 +223,14 @@ public sealed class RestoreExecutor
             state.IntegrityFailure = true;
             state.Failed++;
             state.Issues.Add(new RestoreIssue(target, UserMessages.IntegrityFailed + " " + ex.TechnicalDetails));
+            return;
+        }
+
+        if (IsSymbolicLink(target))
+        {
+            // Never descend into an existing link: it could point outside the restore destination.
+            state.Failed++;
+            state.Issues.Add(new RestoreIssue(target, "A symbolic link exists here; it was not followed and this folder was not restored."));
             return;
         }
 
@@ -350,9 +366,21 @@ public sealed class RestoreExecutor
         }
     }
 
-    private static void RestoreLink(string target, string linkTarget, State state)
+    private static bool IsSymbolicLink(string path)
     {
-        if (File.Exists(target) || Directory.Exists(target))
+        try
+        {
+            return new FileInfo(path).LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static void CreateLink(string target, string linkTarget, State state)
+    {
+        if (File.Exists(target) || Directory.Exists(target) || IsSymbolicLink(target))
         {
             state.Skipped++;
             return;
