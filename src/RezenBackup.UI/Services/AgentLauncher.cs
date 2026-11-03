@@ -49,7 +49,7 @@ public static class AgentLauncher
             }
 
             // Start with the system only from an installed native executable (never a development `dotnet` host).
-            if (app.Settings.StartWithSystem && args.Length == 1)
+            if (app.Settings.StartWithSystem && args.Length == 1 && Environment.GetEnvironmentVariable("REZEN_NO_AUTOSTART") != "1")
             {
                 app.Platform.Autostart.Enable(file);
             }
