@@ -134,7 +134,7 @@ public sealed class BackupService
         catch (OperationCanceledException)
         {
             secret?.Dispose();
-            return Finish(NewRow(run) with { Outcome = RunOutcome.Cancelled, Message = UserMessages.For(ErrorCode.Cancelled) });
+            return Finish(NewRow(run) with { Outcome = RunOutcome.Cancelled, Error = ErrorCode.Cancelled, Message = UserMessages.For(ErrorCode.Cancelled) });
         }
         finally
         {

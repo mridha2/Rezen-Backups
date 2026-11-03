@@ -155,7 +155,15 @@ public sealed class JobService
     }
 
     /// <summary>Removes the job from this computer only. Encrypted backups stay on the drive and can be imported again.</summary>
-    public void Delete(Guid jobId) => _app.Db.DeleteJob(jobId);
+    public void Delete(Guid jobId)
+    {
+        foreach (var r in _app.Db.RepositoriesForJob(jobId))
+        {
+            _app.Platform.Credentials.Delete(r.Id); // remembered backup-only keys
+        }
+
+        _app.Db.DeleteJob(jobId);
+    }
 
     public RepositoryRecord? RepositoryFor(Guid jobId) => _app.Db.RepositoriesForJob(jobId).FirstOrDefault();
 
@@ -254,11 +262,17 @@ public sealed class JobService
     public void RemoveDestination(Guid jobId, Guid repositoryId)
     {
         var repos = _app.Db.RepositoriesForJob(jobId);
+        if (repos.All(r => r.Id != repositoryId))
+        {
+            throw new RezenException(ErrorCode.InvalidConfiguration, "This drive does not belong to this backup job.", null, null);
+        }
+
         if (repos.Count <= 1)
         {
             throw new RezenException(ErrorCode.InvalidConfiguration, "A backup job needs at least one backup drive.", null, null);
         }
 
         _app.Db.DeleteRepository(repositoryId);
+        _app.Platform.Credentials.Delete(repositoryId); // its remembered backup-only key, if any
     }
 }

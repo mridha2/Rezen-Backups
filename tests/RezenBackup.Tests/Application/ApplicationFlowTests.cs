@@ -347,7 +347,11 @@ public class ApplicationFlowTests
         using var session = await UnlockedSession.UnlockAsync(f.App, ks.Info.Id, AppFixture.Password);
         Assert.Equal(2, session.OpenCatalog(job.Id, second.Id).RestorableSnapshots.Count());
 
+        f.App.KeySets.SetRemember(ks.Info.Id, ks.Secret, remember: true, backupOnly: true);
+        Assert.True(f.Credentials.Exists(second.Id));
+        Assert.Throws<RezenException>(() => f.App.Jobs.RemoveDestination(Guid.NewGuid(), second.Id)); // not this job's drive
         f.App.Jobs.RemoveDestination(job.Id, second.Id);
+        Assert.False(f.Credentials.Exists(second.Id)); // its backup-only key is forgotten too
         Assert.True(Directory.Exists(Path.Combine(drive2, "Rezen Backup"))); // nothing deleted on the drive
         Assert.Throws<RezenException>(() => f.App.Jobs.RemoveDestination(job.Id, f.App.Db.RepositoriesForJob(job.Id).Single().Id));
         ks.Secret.Dispose();
