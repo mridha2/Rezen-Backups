@@ -171,6 +171,29 @@ public class UiFlowTests
         window.Close();
     }
 
+    /// <summary>The backup name defaults to today's date, takes the first folder's name, and never overrides a typed name.</summary>
+    [AvaloniaFact]
+    public void SetupWizard_DefaultBackupName_HasTodaysDate()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var (window, vm) = Open(f);
+        var wizard = Assert.IsType<SetupWizardViewModel>(vm.CurrentPage);
+        var today = DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal($"Backup {today}", wizard.JobName);
+        Assert.Equal("Backup 2026-01-09", SetupWizardViewModel.DefaultJobName(null, new DateTime(2026, 1, 9)));
+
+        wizard.AddSource(f.Source);
+        Assert.Equal($"{Path.GetFileName(f.Source)} {today}", wizard.JobName);
+
+        // A name the user typed is kept when the folders change.
+        wizard.RemoveSourceCommand.Execute(f.Source);
+        wizard.JobName = "Accounts";
+        wizard.AddSource(f.Source);
+        Assert.Equal("Accounts", wizard.JobName);
+        window.Close();
+    }
+
     /// <summary>Every page renders without binding errors once a job exists.</summary>
     [AvaloniaFact]
     public async Task AllPages_RenderWithoutBindingErrors()

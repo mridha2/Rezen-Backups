@@ -94,8 +94,18 @@ public sealed partial class SetupWizardViewModel : PageViewModel
     [ObservableProperty]
     private string? _selectedSource;
 
+    /// <summary>The name the wizard filled in itself; replaced when a folder is picked, unless the user typed their own.</summary>
+    private string _autoJobName = DefaultJobName(null, DateTime.Now);
+
     [ObservableProperty]
-    private string _jobName = "My Files";
+    private string _jobName = DefaultJobName(null, DateTime.Now);
+
+    /// <summary>
+    /// Default backup name with today's date, e.g. "Backup 2026-11-04" or "Documents 2026-11-04" once a folder is
+    /// picked. ISO dates are safe in folder names on every platform and sort in order.
+    /// </summary>
+    public static string DefaultJobName(string? folderName, DateTime today) =>
+        $"{(string.IsNullOrWhiteSpace(folderName) ? "Backup" : folderName)} {today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}";
 
     [RelayCommand]
     private async Task AddFolders()
@@ -115,7 +125,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
     }
 
-    private void AddSource(string path)
+    internal void AddSource(string path)
     {
         var overlap = PathPolicy.CheckNewSource(path, Sources);
         switch (overlap.Kind)
@@ -136,9 +146,10 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
 
         Sources.Add(path);
-        if (Sources.Count == 1 && JobName == "My Files")
+        if (Sources.Count == 1 && JobName == _autoJobName)
         {
-            JobName = Path.GetFileName(path.TrimEnd('/', '\\')) is { Length: > 0 } n ? n : "My Files";
+            _autoJobName = DefaultJobName(Path.GetFileName(path.TrimEnd('/', '\\')), DateTime.Now);
+            JobName = _autoJobName;
         }
     }
 
