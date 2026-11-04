@@ -25,6 +25,20 @@ public static class AgentTray
             return;
         }
 
+        // macOS: the agent runs from the same app bundle, so LaunchServices treats the app as already running and
+        // sends "open Rezen Backup" (Finder, Dock, Launchpad, `open`) to the agent as a reopen event. Without this
+        // handler opening the app would do nothing while background protection is on.
+        if (Avalonia.Application.Current?.TryGetFeature<IActivatableLifetime>() is { } activatable)
+        {
+            activatable.Activated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Reopen)
+                {
+                    AgentLauncher.OpenMainWindow();
+                }
+            };
+        }
+
         TrayIcon? tray = null;
         if (app.Settings.ShowTrayIcon)
         {
