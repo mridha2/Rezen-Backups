@@ -21,7 +21,7 @@ public static class AgentTray
         {
             app.Logger.LogInformation("Agent already running; exiting duplicate.");
             app.Dispose();
-            desktop.Shutdown();
+            ExitCleanly(desktop);
             return;
         }
 
@@ -44,6 +44,14 @@ public static class AgentTray
 
         desktop.ShutdownRequested += (_, _) => cts.Cancel();
     }
+
+    /// <summary>
+    /// Exits with code 0 once the main loop is running. Calling Shutdown while Avalonia is still starting throws
+    /// ("Dispatcher shut down") and aborts the process; under launchd's KeepAlive that crash restarts the duplicate
+    /// agent every 10 seconds.
+    /// </summary>
+    public static void ExitCleanly(IClassicDesktopStyleApplicationLifetime desktop) =>
+        Dispatcher.UIThread.Post(() => desktop.Shutdown(0), DispatcherPriority.Background);
 
     private static TrayIcon BuildTray(RezenApp app, AgentHost host, IClassicDesktopStyleApplicationLifetime desktop)
     {

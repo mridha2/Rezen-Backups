@@ -28,7 +28,7 @@ public partial class App : Avalonia.Application
                 // Rezen Backup is already open: ask that window to come to the front, then exit.
                 UiSignals.Send(rezen.Db, UiSignals.Show);
                 rezen.Dispose();
-                desktop.Shutdown();
+                AgentTray.ExitCleanly(desktop);
             }
             else
             {
