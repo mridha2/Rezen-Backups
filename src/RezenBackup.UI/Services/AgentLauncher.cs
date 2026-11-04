@@ -14,7 +14,8 @@ public static class AgentLauncher
         var name = Path.GetFileNameWithoutExtension(process);
         if (string.Equals(name, "dotnet", StringComparison.OrdinalIgnoreCase))
         {
-            return (process, [typeof(AgentLauncher).Assembly.Location, .. extra]);
+            // Development host only (`dotnet RezenBackup.dll`). Assembly.Location is empty in a single-file build.
+            return (process, [Path.Combine(AppContext.BaseDirectory, typeof(AgentLauncher).Assembly.GetName().Name + ".dll"), .. extra]);
         }
 
         return (process, extra);
