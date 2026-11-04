@@ -21,6 +21,11 @@ public partial class App : Avalonia.Application
             ApplyTheme(rezen.Settings.Theme);
             if (Program.AgentMode)
             {
+                if (OperatingSystem.IsMacOS())
+                {
+                    Platform.MacOS.MacDock.HideFromDock();
+                }
+
                 AgentTray.Start(rezen, desktop);
             }
             else if (!UiInstance.TryAcquire(rezen.Paths))
@@ -32,6 +37,12 @@ public partial class App : Avalonia.Application
             }
             else
             {
+                // The bundle is LSUIElement (so the agent never shows in the Dock); the window process opts back in.
+                if (OperatingSystem.IsMacOS())
+                {
+                    Platform.MacOS.MacDock.ShowInDock();
+                }
+
                 var ui = new UiContext(rezen);
                 var window = new MainWindow { DataContext = new MainWindowViewModel(ui) };
                 ui.MainWindow = window;

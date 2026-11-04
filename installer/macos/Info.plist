@@ -12,6 +12,9 @@
   <key>CFBundleVersion</key><string>__VERSION__</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- Every process starts without a Dock icon, so the background agent (same executable, --agent) never shows one.
+       The main window process switches itself to a regular Dock app at startup (MacDock.ShowInDock). -->
+  <key>LSUIElement</key><true/>
   <key>NSHumanReadableCopyright</key><string>Copyright © Rezen</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <!-- Rezen Backup never uses the network. -->
