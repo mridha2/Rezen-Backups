@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- macOS Installer wizard for Rezen Backup. __VERSION__ and __HOSTARCH__ are filled in by build-app.sh. -->
+<installer-gui-script minSpecVersion="2">
+  <title>Rezen Backup</title>
+  <welcome file="welcome.html" mime-type="text/html" />
+  <license file="License.rtf" />
+  <conclusion file="conclusion.html" mime-type="text/html" />
+  <options customize="never" require-scripts="false" hostArchitectures="__HOSTARCH__" />
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true" />
+  <volume-check>
+    <allowed-os-versions>
+      <os-version min="13.0" />
+    </allowed-os-versions>
+  </volume-check>
+  <choices-outline>
+    <line choice="default">
+      <line choice="com.rezen.backup" />
+    </line>
+  </choices-outline>
+  <choice id="default" />
+  <choice id="com.rezen.backup" visible="false">
+    <pkg-ref id="com.rezen.backup" />
+  </choice>
+  <pkg-ref id="com.rezen.backup" version="__VERSION__" onConclusion="none">RezenBackup-component.pkg</pkg-ref>
+</installer-gui-script>
