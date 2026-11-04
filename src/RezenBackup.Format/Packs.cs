@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Formats.Cbor;
 using System.Security.Cryptography;
@@ -22,17 +23,21 @@ public sealed record PackInfo(Guid PackId, PackKind Kind, long Length, byte[] Sh
 /// <summary>Accumulates compressed blobs in memory until the pack is written.</summary>
 public sealed class PackBuilder
 {
-    private readonly MemoryStream _blobs = new();
+    private static readonly byte[] Zeros = new byte[64 * 1024];
+
+    private readonly MemoryStream _blobs;
     private readonly List<PackEntry> _entries = [];
     private readonly HashSet<ChunkId> _ids = [];
 
-    public PackBuilder(PackKind kind)
+    /// <param name="capacity">Expected size in bytes; pre-sizing avoids repeated buffer growth for full packs.</param>
+    public PackBuilder(PackKind kind, int capacity = 0)
     {
         Kind = kind;
         PackId = CryptoRandom.NewId();
+        _blobs = new MemoryStream(capacity);
     }
 
-    public Guid PackId { get; }
+    public Guid PackId { get; private set; }
 
     public PackKind Kind { get; }
 
@@ -60,19 +65,30 @@ public sealed class PackBuilder
     /// <summary>Returns the blob bytes as stored (compressed), used to read back unflushed data.</summary>
     public ReadOnlySpan<byte> GetStored(PackEntry entry) => _blobs.GetBuffer().AsSpan((int)entry.Offset, entry.StoredLength);
 
-    internal byte[] BuildPlaintext()
+    /// <summary>Padded plaintext length: blobs, zero padding, index, trailer.</summary>
+    internal long PlaintextLength(byte[] index) => Padme.Pad(_blobs.Length + index.Length + PackFormat.TrailerSize);
+
+    /// <summary>
+    /// Streams the pack plaintext (blobs, zero padding, index, trailer) into the encryptor without building a
+    /// contiguous copy of it in memory.
+    /// </summary>
+    internal void WritePlaintext(AeadStreamWriter writer, byte[] index)
     {
-        var index = PackFormat.EncodeIndex(_entries);
-        long unpadded = _blobs.Length + index.Length + PackFormat.TrailerSize;
-        long padded = Padme.Pad(unpadded);
-        var plain = new byte[padded];
-        _blobs.GetBuffer().AsSpan(0, (int)_blobs.Length).CopyTo(plain);
+        long padded = PlaintextLength(index);
+        writer.Write(_blobs.GetBuffer().AsSpan(0, (int)_blobs.Length));
         // zero padding sits between blobs and index
-        long indexOffset = padded - PackFormat.TrailerSize - index.Length;
-        index.CopyTo(plain, indexOffset);
-        BinaryPrimitives.WriteInt32LittleEndian(plain.AsSpan((int)(padded - PackFormat.TrailerSize)), index.Length);
-        PackFormat.Magic.CopyTo(plain.AsSpan((int)(padded - 8)));
-        return plain;
+        for (long zeros = padded - _blobs.Length - index.Length - PackFormat.TrailerSize; zeros > 0;)
+        {
+            int n = (int)Math.Min(zeros, Zeros.Length);
+            writer.Write(Zeros.AsSpan(0, n));
+            zeros -= n;
+        }
+
+        writer.Write(index);
+        Span<byte> trailer = stackalloc byte[PackFormat.TrailerSize];
+        BinaryPrimitives.WriteInt32LittleEndian(trailer, index.Length);
+        PackFormat.Magic.CopyTo(trailer[4..]);
+        writer.Write(trailer);
     }
 
     public void Clear()
@@ -81,6 +97,13 @@ public sealed class PackBuilder
         _blobs.SetLength(0);
         _entries.Clear();
         _ids.Clear();
+    }
+
+    /// <summary>Clears the builder and gives it a new pack id, so its buffer can be reused for the next pack.</summary>
+    public void Reset()
+    {
+        Clear();
+        PackId = CryptoRandom.NewId();
     }
 }
 
@@ -145,60 +168,96 @@ public static class PackFormat
     /// Encrypts and durably writes a pack: temp file → flush to device → uncached read-back → authenticate every
     /// segment and re-parse the index → atomic rename into the store. Meta packs are written twice.
     /// </summary>
+    /// <summary>Ciphertext buffer reused across packs written on the same thread (ciphertext is not secret).</summary>
+    [ThreadStatic]
+    private static byte[]? t_cipherBuffer;
+
     public static PackInfo Write(RepositoryLayout layout, RepositoryKeys keys, PackBuilder builder, IDurableFileOps ops)
     {
-        var plain = builder.BuildPlaintext();
-        byte[] cipher;
+        var index = EncodeIndex(builder.Entries);
+        long plainLength = builder.PlaintextLength(index);
+        // Upper bound: header + plaintext + one tag per segment (plus a possible empty final segment).
+        long bound = ObjectHeader.Size + plainLength + ((plainLength / ObjectHeader.DefaultSegmentSize + 2) * 16 /* AES-GCM tag */) + 64;
+        if (bound > int.MaxValue)
+        {
+            throw new RezenException(ErrorCode.EncryptionFailure, "Pack is too large.");
+        }
+
+        if (t_cipherBuffer is null || t_cipherBuffer.Length < bound)
+        {
+            t_cipherBuffer = GC.AllocateUninitializedArray<byte>((int)bound);
+        }
+
+        var buffer = t_cipherBuffer;
+        int cipherLength;
         try
         {
-            using var ms = new MemoryStream(plain.Length + (plain.Length / ObjectHeader.DefaultSegmentSize * 16) + 256);
+            using var ms = new MemoryStream(buffer, 0, buffer.Length, writable: true, publiclyVisible: true);
             using (var w = new AeadStreamWriter(ms, keys, keys.NewObjectHeader(ObjectTypeFor(builder.Kind))))
             {
-                w.Write(plain);
+                builder.WritePlaintext(w, index);
                 w.Complete();
             }
 
-            cipher = ms.ToArray();
+            cipherLength = (int)ms.Position;
         }
         catch (CryptographicException ex)
         {
             throw new RezenException(ErrorCode.EncryptionFailure, ex.Message, ex);
         }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(plain);
-        }
 
-        var sha = SHA256.HashData(cipher);
-        WriteVerifiedCopy(layout, keys, builder, cipher, layout.PackPath(builder.Kind, builder.PackId), ops);
+        var sha = SHA256.HashData(buffer.AsSpan(0, cipherLength));
+        WriteVerifiedCopy(layout, keys, builder, buffer, cipherLength, layout.PackPath(builder.Kind, builder.PackId), ops);
         if (builder.Kind == PackKind.Meta)
         {
-            WriteVerifiedCopy(layout, keys, builder, cipher, layout.PackPath(builder.Kind, builder.PackId, copy: true), ops);
+            WriteVerifiedCopy(layout, keys, builder, buffer, cipherLength, layout.PackPath(builder.Kind, builder.PackId, copy: true), ops);
         }
 
-        return new PackInfo(builder.PackId, builder.Kind, cipher.LongLength, sha, builder.Entries.ToList());
+        return new PackInfo(builder.PackId, builder.Kind, cipherLength, sha, builder.Entries.ToList());
     }
 
-    private static void WriteVerifiedCopy(RepositoryLayout layout, RepositoryKeys keys, PackBuilder builder, byte[] cipher, string finalPath, IDurableFileOps ops)
+    private static void WriteVerifiedCopy(RepositoryLayout layout, RepositoryKeys keys, PackBuilder builder, byte[] buffer, int length, string finalPath, IDurableFileOps ops)
     {
+        var cipher = buffer.AsSpan(0, length);
         Directory.CreateDirectory(layout.TempDirectory);
         var tmp = Path.Combine(layout.TempDirectory, Path.GetFileName(finalPath) + "." + CryptoRandom.NextInt(int.MaxValue) + ".tmp");
         try
         {
-            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 20))
+            using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0))
             {
                 fs.Write(cipher);
                 ops.FlushToDevice(fs);
             }
 
-            var readBack = EncryptedObjects.ReadAllForVerification(tmp, ops);
-            if (!CryptographicOperations.FixedTimeEquals(readBack, cipher))
+            // Uncached read-back, compared piece by piece with what was written.
+            var piece = ArrayPool<byte>.Shared.Rent(1 << 20);
+            try
             {
-                throw new RezenException(ErrorCode.CommitFailed, "Pack read-back did not match what was written.");
+                using var vs = ops.OpenForVerification(tmp);
+                int pos = 0;
+                int n;
+                while ((n = vs.Read(piece, 0, piece.Length)) > 0)
+                {
+                    if (pos + n > cipher.Length || !piece.AsSpan(0, n).SequenceEqual(cipher.Slice(pos, n)))
+                    {
+                        throw new RezenException(ErrorCode.CommitFailed, "Pack read-back did not match what was written.");
+                    }
+
+                    pos += n;
+                }
+
+                if (pos != cipher.Length)
+                {
+                    throw new RezenException(ErrorCode.CommitFailed, "Pack read-back did not match what was written.");
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(piece);
             }
 
-            // Authenticate the bytes that are actually on the device and confirm the index parses identically.
-            using (var rs = new MemoryStream(readBack, writable: false))
+            // The device holds exactly these bytes: authenticate them and confirm the index parses identically.
+            using (var rs = new MemoryStream(buffer, 0, length, writable: false))
             using (var reader = new PackReader(rs, keys, builder.Kind))
             {
                 reader.VerifyAllSegments();
