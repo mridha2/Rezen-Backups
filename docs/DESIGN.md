@@ -1319,6 +1319,16 @@ Where the implementation differs from the plan above, this section takes precede
   - Restore lets the user choose which drive to restore from.
   - "Stop using a drive" only forgets it on this computer.
 - **Periodic independent full snapshots:** every 30 or 90 days, per job.
+- **Backup pipeline (§13, §16.1).** One walker thread lists folders, compares files with the previous snapshot,
+  splits changed files into chunks and hashes them. Compression runs on the thread pool, bounded to 2 × CPU cores
+  and 64 MiB of pending data. One background writer thread encrypts each 32 MiB pack, writes it, flushes it to the
+  device, reads it back uncached, compares it and authenticates it. The walker keeps reading in the meantime, and blocks
+  when the writer is a pack behind, so a slow drive limits memory, not correctness. The chunk index is only updated
+  on the walker thread, from packs the writer reports as finished. On failure or cancel the writer is stopped before
+  the repository lock is released, and the snapshot stays `.incomplete`.
+  - Measured on an M-series MacBook Pro (internal SSD, 20,304 files, 2.7 GB): the first backup engine time went from
+    12.1 s to 5.5 s (about 530 MB/s, with full flush and read-back). An unchanged incremental run takes 0.3 s.
+    On external drives the drive's own write speed is now the limit.
 - **Password generator (§7).** The setup wizard and the change-password dialog can generate a password.
   - Format: six groups of four characters from a 56-symbol alphabet with no look-alike characters, about 139 bits, from the OS CSPRNG (`PasswordGenerator`).
   - A popup shows the password with Copy and Generate Another buttons and instructions for saving it in a password manager and on paper (not on the backup drive, and not in plain notes or email).
