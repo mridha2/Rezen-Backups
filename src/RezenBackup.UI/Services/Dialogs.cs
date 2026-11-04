@@ -86,14 +86,14 @@ public static class Dialogs
         await dlg.ShowDialog(owner);
     }
 
-    public static async Task<bool> ConfirmAsync(Window owner, string title, string message, string confirm = "Continue", bool danger = false)
+    public static async Task<bool> ConfirmAsync(Window owner, string title, string message, string confirm = "Continue", bool danger = false, string cancelText = "Cancel")
     {
         var dlg = NewDialog(title);
         bool result = false;
         var panel = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
         panel.Children.Add(Text(title, "h3", 17));
         panel.Children.Add(Text(message));
-        var cancel = Btn("Cancel");
+        var cancel = Btn(cancelText);
         var go = Btn(confirm, primary: !danger, danger: danger);
         cancel.Click += (_, _) => dlg.Close();
         go.Click += (_, _) =>

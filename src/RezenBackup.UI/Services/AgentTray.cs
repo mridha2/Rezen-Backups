@@ -39,6 +39,16 @@ public static class AgentTray
             };
         }
 
+        // "Back up now?" when a backup drive is plugged in: open (or bring forward) the main window with the prompt.
+        host.BackupPromptRequested += (drive, jobIds) =>
+        {
+            var name = drive.Volume?.Label is { Length: > 0 } label ? label
+                : Path.GetFileName(drive.MountPath.TrimEnd('/', '\\')) is { Length: > 0 } folder ? folder // "/Volumes/BACKUP" → "BACKUP"
+                : drive.MountPath; // "E:\\"
+            UiSignals.SendDrivePrompt(app.Db, name, jobIds);
+            AgentLauncher.OpenMainWindow();
+        };
+
         TrayIcon? tray = null;
         if (app.Settings.ShowTrayIcon)
         {

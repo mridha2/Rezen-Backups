@@ -13,6 +13,19 @@ public enum ThemePreference
     Dark,
 }
 
+/// <summary>What Rezen Backup does when a registered backup drive is connected.</summary>
+public enum DriveConnectAction
+{
+    /// <summary>Open Rezen Backup and ask whether to back up now.</summary>
+    Ask = 0,
+
+    /// <summary>Back up without asking, but only when a backup is due or the last one failed.</summary>
+    BackUpIfDue = 1,
+
+    /// <summary>Do nothing; scheduled backups still run.</summary>
+    DoNothing = 2,
+}
+
 /// <summary>User settings (spec §82). Stored in the local database; contains no secrets.</summary>
 public sealed record AppSettings
 {
@@ -30,6 +43,10 @@ public sealed record AppSettings
     // Backup
     public VerificationLevel DefaultVerification { get; init; } = VerificationLevel.Standard;
 
+    /// <summary>What happens when a drive that holds one of this computer's backups is plugged in.</summary>
+    public DriveConnectAction OnDriveConnected { get; init; } = DriveConnectAction.Ask;
+
+    /// <summary>Replaced by <see cref="OnDriveConnected"/>; only read to carry over an explicit "off" from older versions.</summary>
     public bool AutoBackupOnDriveConnect { get; init; } = true;
 
     public int DeepVerifyEveryDays { get; init; } = 30;
@@ -78,7 +95,14 @@ public sealed record AppSettings
 
         try
         {
-            return JsonSerializer.Deserialize<AppSettings>(raw, Json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(raw, Json) ?? new AppSettings();
+            // Settings saved before OnDriveConnected existed: someone who had turned drive-connect backups off keeps them off.
+            if (!raw.Contains("\"OnDriveConnected\"", StringComparison.Ordinal) && !settings.AutoBackupOnDriveConnect)
+            {
+                settings = settings with { OnDriveConnected = DriveConnectAction.DoNothing };
+            }
+
+            return settings;
         }
         catch (JsonException)
         {

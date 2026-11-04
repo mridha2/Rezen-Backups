@@ -36,6 +36,9 @@ public sealed class UiContext : IDisposable
         _lockTimer.Start();
         _lastShow = UiSignals.Read(app.Db, UiSignals.Show);
         _lastLock = UiSignals.Read(app.Db, UiSignals.Lock);
+        // A drive prompt sent moments ago is probably why this window was opened: show it once the window is up.
+        var prompt = UiSignals.ReadDrivePrompt(app.Db);
+        _lastDrivePrompt = prompt is { } p && DateTimeOffset.UtcNow.UtcTicks - p.UtcTicks < TimeSpan.FromMinutes(2).Ticks ? 0 : prompt?.UtcTicks ?? 0;
         _signalTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (_, _) => CheckSignals());
         _signalTimer.Start();
     }
@@ -59,6 +62,8 @@ public sealed class UiContext : IDisposable
     private readonly DispatcherTimer _signalTimer;
     private string? _lastShow;
     private string? _lastLock;
+    private long _lastDrivePrompt;
+    private bool _drivePromptOpen;
 
     private void CheckSignals()
     {
@@ -82,6 +87,61 @@ public sealed class UiContext : IDisposable
         {
             _lastLock = lockRequest;
             Lock("Locked from the menu bar / tray.");
+        }
+
+        if (UiSignals.ReadDrivePrompt(App.Db) is { } prompt && prompt.UtcTicks != _lastDrivePrompt)
+        {
+            _lastDrivePrompt = prompt.UtcTicks;
+            _ = AskToBackUpAsync(prompt);
+        }
+    }
+
+    /// <summary>"Your backup drive is connected. Back up now?" for the jobs that back up to it.</summary>
+    internal async Task AskToBackUpAsync(UiSignals.DrivePromptRequest prompt)
+    {
+        if (_drivePromptOpen || MainWindow is not { } w || !App.Settings.SetupCompleted)
+        {
+            return;
+        }
+
+        var jobs = prompt.JobIds.Select(App.Jobs.Get).OfType<JobDefinition>()
+            .Where(j => j.Enabled && App.Backups.Active(j.Id) is null).ToList();
+        if (jobs.Count == 0)
+        {
+            return;
+        }
+
+        _drivePromptOpen = true;
+        try
+        {
+            if (w.WindowState == WindowState.Minimized)
+            {
+                w.WindowState = WindowState.Normal;
+            }
+
+            w.Activate();
+            var lines = jobs.Select(j =>
+            {
+                var last = App.Db.Snapshots(j.Id).Select(s => (DateTimeOffset?)s.StartedUtc).DefaultIfEmpty(null).Max();
+                return $"\u2022 {j.Name}: last backup {(last is null ? "never" : Fmt.When(last))}";
+            });
+            var message = $"Your backup drive \"{prompt.DriveName}\" is connected.\n\n{string.Join("\n", lines)}\n\nBack up now?";
+            if (await Dialogs.ConfirmAsync(w, "Backup drive connected", message, "Back Up Now", cancelText: "Not Now"))
+            {
+                foreach (var job in jobs)
+                {
+                    if (!await BackUpNowAsync(job))
+                    {
+                        break;
+                    }
+                }
+
+                ViewModels.Navigation.Go("dashboard");
+            }
+        }
+        finally
+        {
+            _drivePromptOpen = false;
         }
     }
 

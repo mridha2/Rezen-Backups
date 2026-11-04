@@ -164,7 +164,7 @@
             <NumericUpDown Value="{Binding DayOfMonth}" Minimum="1" Maximum="31" Width="120" FormatString="0" />
           </StackPanel>
           <ComboBox ItemsSource="{Binding Intervals}" SelectedIndex="{Binding IntervalIndex}" IsVisible="{Binding ShowsInterval}" Width="260" />
-          <CheckBox IsChecked="{Binding AutoRunOnConnect}" Content="Run a pending backup automatically when the backup drive is connected" />
+          <CheckBox IsChecked="{Binding AutoRunOnConnect}" Content="Offer to back up this job when its backup drive is connected (see Settings)" />
           <Border Classes="tile">
             <StackPanel Spacing="6">
               <CheckBox IsChecked="{Binding RememberOnPc}" Content="Remember password on this PC (allow automatic scheduled backups)" FontWeight="SemiBold" />

@@ -31,7 +31,8 @@
         <StackPanel Spacing="6">
           <TextBlock Text="Backup" Classes="h3" />
           <CheckBox Content="Use full verification for new backup jobs" IsChecked="{Binding FullVerificationDefault}" />
-          <CheckBox Content="Automatically run pending backups when a backup drive is connected" IsChecked="{Binding AutoBackupOnConnect}" />
+          <TextBlock Text="When a backup drive is connected" Classes="label" Margin="0,4,0,0" />
+          <ComboBox ItemsSource="{Binding DriveConnectOptions}" SelectedIndex="{Binding DriveConnectIndex}" MinWidth="360" />
           <TextBlock Classes="label" TextWrapping="Wrap" Text="Schedules, retention and exclusions are set for each backup job on the Backup Jobs page." />
         </StackPanel>
       </Border>

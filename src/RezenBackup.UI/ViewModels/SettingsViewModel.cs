@@ -23,7 +23,7 @@ public sealed partial class SettingsViewModel : PageViewModel
         RunMissed = s.RunMissedBackups;
         KeepAwake = s.KeepComputerAwake;
         FullVerificationDefault = s.DefaultVerification == VerificationLevel.Full;
-        AutoBackupOnConnect = s.AutoBackupOnDriveConnect;
+        DriveConnectIndex = (int)s.OnDriveConnected;
         HideFileNames = s.HideFileNamesInLogs;
         NotifySuccess = s.NotifySuccess;
         NotifyFailure = s.NotifyFailure;
@@ -41,6 +41,14 @@ public sealed partial class SettingsViewModel : PageViewModel
     }
 
     public IReadOnlyList<string> Themes { get; } = ["System", "Light", "Dark"];
+
+    /// <summary>In <see cref="DriveConnectAction"/> order.</summary>
+    public IReadOnlyList<string> DriveConnectOptions { get; } =
+    [
+        "Open Rezen Backup and ask whether to back up",
+        "Back up automatically when a backup is due",
+        "Do nothing (scheduled backups still run)",
+    ];
 
     public System.Collections.ObjectModel.ObservableCollection<JobChoice> Jobs { get; } = [];
 
@@ -66,7 +74,7 @@ public sealed partial class SettingsViewModel : PageViewModel
     private bool _fullVerificationDefault;
 
     [ObservableProperty]
-    private bool _autoBackupOnConnect;
+    private int _driveConnectIndex;
 
     [ObservableProperty]
     private bool _hideFileNames;
@@ -111,7 +119,7 @@ public sealed partial class SettingsViewModel : PageViewModel
             RunMissedBackups = RunMissed,
             KeepComputerAwake = KeepAwake,
             DefaultVerification = FullVerificationDefault ? VerificationLevel.Full : VerificationLevel.Standard,
-            AutoBackupOnDriveConnect = AutoBackupOnConnect,
+            OnDriveConnected = (DriveConnectAction)Math.Clamp(DriveConnectIndex, 0, 2),
             HideFileNamesInLogs = HideFileNames,
             NotifySuccess = NotifySuccess,
             NotifyFailure = NotifyFailure,

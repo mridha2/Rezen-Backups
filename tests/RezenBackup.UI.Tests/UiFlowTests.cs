@@ -375,6 +375,80 @@ public class UiFlowTests
         return job;
     }
 
+    /// <summary>Plugging in the backup drive asks (default), backs up when due, or does nothing, as set in Settings.</summary>
+    [AvaloniaFact]
+    public async Task DriveConnected_AgentAsksByDefault_AndRespectsTheSetting()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var job = await CreateJobWithBackupAsync(f);
+        var driveId = f.App.Db.RepositoriesForJob(job.Id).Single().DriveId;
+        var drive = new RezenBackup.DriveMonitor.ConnectedDrive(driveId, f.Drive, null);
+        var host = new RezenBackup.Agent.AgentHost(f.App);
+        IReadOnlyList<Guid>? asked = null;
+        host.BackupPromptRequested += (_, jobs) => asked = jobs;
+
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.Ask, f.App.Settings.OnDriveConnected);
+        host.OnDriveArrived(drive);
+        Assert.Equal([job.Id], asked);
+        Assert.Single(f.App.Db.Runs(job.Id)); // asking never starts a backup by itself
+
+        asked = null;
+        f.App.SaveSettings(f.App.Settings with { OnDriveConnected = RezenBackup.Application.DriveConnectAction.DoNothing });
+        host.OnDriveArrived(drive);
+        Assert.Null(asked);
+
+        f.App.SaveSettings(f.App.Settings with { OnDriveConnected = RezenBackup.Application.DriveConnectAction.BackUpIfDue });
+        host.OnDriveArrived(drive);
+        Assert.Null(asked);
+        Assert.Single(f.App.Db.Runs(job.Id)); // nothing is due right after a successful backup
+        await host.DisposeAsync();
+    }
+
+    /// <summary>The "Back up now?" prompt names the drive and the job; Back Up Now runs it (asking for the password), Cancel does not.</summary>
+    [AvaloniaFact]
+    public async Task DrivePrompt_BackUpNow_RunsTheJob_CancelDoesNot()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var job = await CreateJobWithBackupAsync(f);
+        var (window, _) = Open(f);
+        var prompt = new RezenBackup.UI.Services.UiSignals.DrivePromptRequest(DateTimeOffset.UtcNow.UtcTicks, "BACKUP-USB", [job.Id]);
+
+        DialogDriver.Answer("Not Now");
+        await f.Ui.AskToBackUpAsync(prompt);
+        Assert.Single(f.App.Db.Runs(job.Id));
+
+        string? message = null;
+        DialogDriver.Enqueue(w =>
+        {
+            message = string.Join(" ", w.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            DialogDriver.Click(w, "Back Up Now");
+        });
+        DialogDriver.Unlock(UiFixture.Password);
+        var ask = f.Ui.AskToBackUpAsync(prompt);
+        await UiFixture.WaitUntil(() => ask.IsCompleted);
+        await ask;
+        Assert.Contains("\"BACKUP-USB\" is connected", message, StringComparison.Ordinal);
+        Assert.Contains("Company Documents", message, StringComparison.Ordinal);
+        await UiFixture.WaitUntil(() => f.App.Db.Runs(job.Id).Count == 2 && f.App.Db.Runs(job.Id).All(r => r.Outcome != RunOutcome.Running));
+        Assert.Equal(RunOutcome.Success, f.App.Db.Runs(job.Id).First().Outcome);
+        window.Close();
+    }
+
+    /// <summary>Settings saved before the drive-connect choice existed keep an explicit "off".</summary>
+    [AvaloniaFact]
+    public void DriveConnectSetting_MigratesFromOlderVersions()
+    {
+        using var f = new UiFixture();
+        f.App.Db.SetSetting("app.settings", "{}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.Ask, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
+        f.App.Db.SetSetting("app.settings", "{\"AutoBackupOnDriveConnect\":false}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.DoNothing, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
+        f.App.Db.SetSetting("app.settings", "{\"AutoBackupOnDriveConnect\":false,\"OnDriveConnected\":\"BackUpIfDue\"}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.BackUpIfDue, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
+    }
+
     /// <summary>A lock request during a key-using operation waits for it instead of freeing keys underneath it.</summary>
     [AvaloniaFact]
     public async Task Lock_IsDeferredWhileBusy()

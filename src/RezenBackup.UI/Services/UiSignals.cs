@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using RezenBackup.Core.Platform;
 using RezenBackup.Database;
 
@@ -42,4 +43,25 @@ public static class UiSignals
         db.SetSetting(signal, DateTimeOffset.UtcNow.UtcTicks.ToString(CultureInfo.InvariantCulture));
 
     public static string? Read(AppDatabase db, string signal) => db.GetSetting(signal);
+
+    /// <summary>Set by the agent when a backup drive is connected and the user wants to be asked.</summary>
+    public const string DrivePrompt = "ui.drivePrompt";
+
+    /// <summary>A request to ask "Back up now?" for the jobs that back up to a drive that was just connected.</summary>
+    public sealed record DrivePromptRequest(long UtcTicks, string DriveName, IReadOnlyList<Guid> JobIds);
+
+    public static void SendDrivePrompt(AppDatabase db, string driveName, IReadOnlyList<Guid> jobIds) =>
+        db.SetSetting(DrivePrompt, JsonSerializer.Serialize(new DrivePromptRequest(DateTimeOffset.UtcNow.UtcTicks, driveName, jobIds)));
+
+    public static DrivePromptRequest? ReadDrivePrompt(AppDatabase db)
+    {
+        try
+        {
+            return db.GetSetting(DrivePrompt) is { } raw ? JsonSerializer.Deserialize<DrivePromptRequest>(raw) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

@@ -1319,6 +1319,17 @@ Where the implementation differs from the plan above, this section takes precede
   - Restore lets the user choose which drive to restore from.
   - "Stop using a drive" only forgets it on this computer.
 - **Periodic independent full snapshots:** every 30 or 90 days, per job.
+- **Backup drive plugged in (§17, §21.2).** Setting "When a backup drive is connected":
+  - **Ask (default).** The agent opens Rezen Backup with "Your backup drive "X" is connected. Back up now?", listing
+    each job on that drive with its last backup time. *Back Up Now* uses the normal path, so it asks for the
+    password unless a backup-only key is remembered.
+  - **Back up automatically if due.** This was the behaviour before.
+  - **Do nothing.**
+
+  Only real plug-ins count: drives already connected when the agent starts (for example at login) don't prompt. Jobs
+  that are already running are skipped. Each job can opt out with "Offer to back up this job when its backup drive is
+  connected". The request travels from agent to window through the local database (`ui.drivePrompt`, with no
+  secrets). Settings from older versions with the automatic option turned off become *Do nothing*.
 - **Backup pipeline (§13, §16.1).** One walker thread lists folders, compares files with the previous snapshot,
   splits changed files into chunks and hashes them. Compression runs on the thread pool, bounded to 2 × CPU cores
   and 64 MiB of pending data. One background writer thread encrypts each 32 MiB pack, writes it, flushes it to the
