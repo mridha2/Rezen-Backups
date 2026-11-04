@@ -386,9 +386,9 @@ RZN1-7KQ4-HX2M-P9TD-…-W3QF-C8      (14 groups of 4 Crockford-Base32 characters
 
 1. **Setup step 4:** RS is generated and shown. The user can then:
    - **Print it** through the Windows print dialog, which is local and offline. The app shows a reminder not to use a cloud print service.
-   - **Save it to a file** on another removable device. Saving is **blocked** to any volume that holds a Rezen repository for this Key Set, and a warning appears if the target is a cloud-synced folder.
+   - **Save it to a file**, on this computer (the picker starts in Documents) or on another device. Saving is **blocked** to any volume that holds a Rezen repository for this Key Set, and a warning appears if the target is a cloud-synced folder. After saving, the app suggests also printing it or copying it to a USB stick, since a copy kept only on this computer is lost with the computer.
    - **Skip it**, after a strong warning: "If you lose both your password and your recovery key, your encrypted backups cannot be recovered."
-2. **Confirmation:** the user re-types two randomly chosen groups. Only then is the Security page set to "Recovery key: Configured".
+2. **Confirmation:** the user ticks "I have saved my recovery key somewhere safe" (or explicitly skips). Only then is the Security page set to "Recovery key: Configured". The earlier design asked the user to re-type a random group; it was dropped as unnecessary friction.
 3. **Viewing it later:** an unlocked user can show the recovery key again after re-entering the password. This helps users who skipped step 1, and it gives an attacker nothing they don't already have with the password.
 4. **Rotation:** RS cannot be changed without re-encrypting data. "My recovery key may be exposed" therefore leads to **Re-key** (§8.4), which starts a new repository with a new RS and keeps the old one until the new one is verified.
 5. **Never stored by Rezen:** not in the database, the registry, logs, the drive, or DPAPI. Recovery uses no internet and has no back door (spec §12).

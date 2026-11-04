@@ -6,7 +6,7 @@ Rezen Backup copies the folders you choose to an external drive as **encrypted, 
 
 - **Always encrypted** — AES-256-GCM (segmented STREAM construction, a unique key per object); there is no unencrypted mode.
 - **Password protected** — Argon2id (256 MiB, calibrated); the password is never stored.
-- **Offline recovery key** — print it or save it to another device; no online reset, no back door.
+- **Offline recovery key** — print it or save it as a file (on this computer or a USB stick, never the backup drive); no online reset, no back door.
 - **Dated snapshots** — `2026-11-03_20-00-00`, each a complete recovery point; incremental and deduplicated.
 - **Verified before it counts** — data is flushed, read back from the device, authenticated and committed with an authenticated record; interrupted backups stay `.incomplete`.
 - **Backup-only key for scheduled backups** — the key kept on the PC can add new backups but cannot decrypt stored file contents.

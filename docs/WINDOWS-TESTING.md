@@ -36,7 +36,7 @@ The script needs nothing extra: the WiX installer tools download automatically d
 ## 3. First backup (15 minutes)
 
 1. Create a test folder, for example `C:\RezenTest`, with a few files and a subfolder. Include one file with a long name and one with non-English characters, such as `Résumé 日本語.txt`.
-2. Start Rezen Backup. In the setup wizard, choose `C:\RezenTest` and your USB drive. Create a password, then **print or save** the recovery key and confirm it. Choose **Daily** and **Full verification**.
+2. Start Rezen Backup. In the setup wizard, choose `C:\RezenTest` and your USB drive. Create a password, then **print or save** the recovery key (saving to Documents on this PC is allowed) and tick **I have saved my recovery key**. Choose **Daily** and **Full verification**.
 3. Click **Back Up Now** when asked.
 
 - [ ] The Dashboard shows progress, then **Your files are protected** with the status **Encrypted & Verified**.
