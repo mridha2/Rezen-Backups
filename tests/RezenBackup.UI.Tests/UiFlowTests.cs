@@ -194,6 +194,23 @@ public class UiFlowTests
         window.Close();
     }
 
+    /// <summary>The main window fits the screen it opens on, from a small laptop to a large display.</summary>
+    [Theory]
+    [InlineData(1728, 1009, null, null, 1100, 720)]     // 14" MacBook Pro (menu bar and Dock excluded)
+    [InlineData(1280, 705, null, null, 1100, 564)]      // 13" laptop: shorter than the default
+    [InlineData(1366, 728, null, null, 1100, 582.4)]    // common Windows laptop with taskbar
+    [InlineData(2560, 1400, null, null, 1100, 720)]     // large display: default size, not stretched
+    [InlineData(1728, 1009, 1500.0, 2000.0, 1500, 969)] // saved size is kept, but clamped to the screen
+    [InlineData(800, 500, null, null, 784, 460)]        // tiny screen: minimums shrink so the window still fits
+    public void WindowPlacement_FitsTheScreen(double availW, double availH, double? savedW, double? savedH, double expectW, double expectH)
+    {
+        var (w, h, minW, minH) = RezenBackup.UI.Services.WindowPlacement.Fit(availW, availH, savedW, savedH);
+        Assert.Equal(expectW, w, 1);
+        Assert.Equal(expectH, h, 1);
+        Assert.True(w <= availW && h + 28 <= availH, "window plus title bar must fit");
+        Assert.True(minW <= w && minH <= h);
+    }
+
     /// <summary>Every page renders without binding errors once a job exists.</summary>
     [AvaloniaFact]
     public async Task AllPages_RenderWithoutBindingErrors()

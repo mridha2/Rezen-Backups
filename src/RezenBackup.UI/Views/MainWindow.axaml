@@ -5,7 +5,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="Rezen Backup"
         Icon="/Assets/rezen.ico"
-        Width="1180" Height="800" MinWidth="920" MinHeight="620"
+        Width="1100" Height="720" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterScreen">
   <DockPanel>
     <Border DockPanel.Dock="Left" Width="236" IsVisible="{Binding ShowNav}"

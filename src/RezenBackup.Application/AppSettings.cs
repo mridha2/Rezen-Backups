@@ -55,6 +55,13 @@ public sealed record AppSettings
     // Appearance
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
+    /// <summary>Last main-window size chosen by the user (device-independent units); null until the window is first closed.</summary>
+    public double? WindowWidth { get; init; }
+
+    public double? WindowHeight { get; init; }
+
+    public bool WindowMaximized { get; init; }
+
     public bool SetupCompleted { get; init; }
 
     private const string Key = "app.settings";

@@ -47,6 +47,7 @@ public partial class App : Avalonia.Application
                 var window = new MainWindow { DataContext = new MainWindowViewModel(ui) };
                 ui.MainWindow = window;
                 desktop.MainWindow = window;
+                WindowPlacement.Attach(window, rezen);
                 window.Closed += (_, _) =>
                 {
                     UiInstance.Release();
