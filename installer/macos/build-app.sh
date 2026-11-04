@@ -22,7 +22,7 @@ sed "s/__VERSION__/$VERSION/g" installer/macos/Info.plist > "$APP/Contents/Info.
 
 # Icon: render the PNG into an .iconset and convert with iconutil.
 ICONSET="$OUT/rezen.iconset"; mkdir -p "$ICONSET"
-SRC=src/RezenBackup.UI/Assets/rezen-256.png
+SRC=installer/icons/rezen-1024.png   # regenerate with: swift installer/icons/make-icons.swift installer/icons/rezen-source.png
 for s in 16 32 128 256 512; do
   sips -z $s $s "$SRC" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
   d=$((s*2)); sips -z $d $d "$SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
