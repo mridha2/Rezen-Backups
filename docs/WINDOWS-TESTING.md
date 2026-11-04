@@ -33,6 +33,20 @@ The script needs nothing extra: the WiX installer tools download automatically d
 - [ ] **Rezen Backup** appears in the Start menu.
 - [ ] In `services.msc`, **Rezen Backup Shadow Copy Helper** is **Running**.
 
+### Quick alternative: the portable exe (no install, no SDK)
+
+To try the app without the SDK or installer, build the portable version on a Mac (or any machine with the .NET SDK) and copy it over:
+
+```bash
+./installer/windows/build-portable.sh
+```
+
+This produces `artifacts/windows/portable-win-x64/RezenBackup.exe` (the app) and `rezen.exe` (the command line), zipped together as `artifacts/windows/RezenBackup-1.0.0-win-x64-portable.zip`. Copy `RezenBackup.exe` to the PC, for example into `C:\Tools\Rezen Backup\`, and double-click it. It is unsigned, so SmartScreen warns you; choose **More info → Run anyway**.
+
+The portable exe has no shadow-copy service (only the MSI can install it), so files that another program has locked open are skipped and listed in the backup report. Everything else in this guide works the same. Start with section 3, and skip the shadow-copy checks.
+
+- [ ] `RezenBackup.exe` starts, shows the new icon in the title bar and taskbar, and opens the setup wizard.
+
 ## 3. First backup (15 minutes)
 
 1. Create a test folder, for example `C:\RezenTest`, with a few files and a subfolder. Include one file with a long name and one with non-English characters, such as `Résumé 日本語.txt`.
