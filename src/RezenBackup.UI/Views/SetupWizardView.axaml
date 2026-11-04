@@ -102,11 +102,20 @@
           <Border Classes="banner-info">
             <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="Your backup drive cannot be opened without this password." />
           </Border>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="Make up your own password, or let Rezen Backup generate one." TextWrapping="Wrap" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Generate Password…" Command="{Binding GeneratePasswordCommand}" Margin="12,0,0,0" />
+          </Grid>
           <TextBlock Text="Create backup password" Classes="label" />
           <TextBox Text="{Binding Password}" PasswordChar="{Binding PasswordChar}" Watermark="At least 12 characters" />
           <TextBlock Text="Confirm password" Classes="label" />
           <TextBox Text="{Binding ConfirmPassword}" PasswordChar="{Binding PasswordChar}" Watermark="Type it again" />
           <CheckBox Content="Show password" IsChecked="{Binding ShowPassword}" />
+          <Border Classes="banner-good" IsVisible="{Binding UsingGeneratedPassword}">
+            <TextBlock TextWrapping="Wrap" Text="Generated password filled in. Make sure it is saved in your password manager or on paper before you continue. You will need it to restore files." />
+          </Border>
           <TextBlock Text="Password strength" Classes="label" Margin="0,8,0,0" />
           <ProgressBar Value="{Binding StrengthValue}" Maximum="100" />
           <TextBlock Text="{Binding StrengthText}" FontWeight="SemiBold" />

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -232,6 +233,18 @@ public static class Dialogs
             strength.Text = string.IsNullOrEmpty(pw.Text) ? string.Empty : $"{a.StrengthText} · estimated time to crack offline: {a.CrackTimeDisplay}";
             feedback.Text = string.Join(" ", a.Feedback);
         };
+        var generate = new Button { Content = "Generate a strong password…", Classes = { "link" } };
+        generate.Click += async (_, _) =>
+        {
+            var generated = await GeneratedPasswordAsync(dlg);
+            if (generated is not null)
+            {
+                pw.Text = generated;
+                confirm.Text = generated;
+                error.Text = string.Empty;
+            }
+        };
+        panel.Children.Add(generate);
         panel.Children.Add(pw);
         panel.Children.Add(confirm);
         panel.Children.Add(show);
@@ -266,6 +279,149 @@ public static class Dialogs
         dlg.Content = panel;
         await dlg.ShowDialog(owner);
         return result;
+    }
+
+    /// <summary>How long a copied password stays on the clipboard before Rezen Backup clears it.</summary>
+    public static readonly TimeSpan ClipboardClearDelay = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// Generates a strong random password and shows it with a Copy button and instructions for saving it. The caller
+    /// only gets the password once the user confirms they have saved it; returns null if cancelled.
+    /// </summary>
+    public static async Task<string?> GeneratedPasswordAsync(Window owner)
+    {
+        var dlg = NewDialog("Generated password", 560);
+        string password = Security.PasswordGenerator.Generate();
+        string? result = null;
+        bool copied = false;
+
+        var panel = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
+        panel.Children.Add(Text("Your new backup password", "h3", 17));
+        panel.Children.Add(Text($"A random password created on this computer (about {Security.PasswordGenerator.EntropyBits:0} bits of entropy). It has no look-alike characters, so it can be read from paper and typed on another computer.", "muted"));
+
+        var shown = new SelectableTextBlock
+        {
+            Text = password,
+            FontSize = 20,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            FontFamily = new FontFamily("Menlo, Consolas, Courier New, monospace"),
+        };
+        panel.Children.Add(new Border { Child = shown, Padding = new Thickness(12), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), BorderBrush = Brushes.Gray });
+
+        var status = Text(string.Empty, "muted", 12);
+        var copy = Btn("Copy Password", primary: true);
+        var another = Btn("Generate Another");
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, another } });
+        panel.Children.Add(status);
+
+        var steps = new StackPanel { Spacing = 6 };
+        steps.Children.Add(Text("Save this password before you continue", "h3", 15));
+        string manager = OperatingSystem.IsMacOS()
+            ? "the Passwords app (or Keychain Access) on this Mac, or a password manager such as Bitwarden, 1Password or KeePassXC"
+            : "a password manager such as Bitwarden, 1Password or KeePass";
+        steps.Children.Add(Text($"1. Click Copy Password, then paste it into {manager} as a new entry named \"Rezen Backup\". Save the entry before closing it."));
+        steps.Children.Add(Text("2. Also write it down on paper and keep it with your recovery key, somewhere safe and away from this computer."));
+        steps.Children.Add(Text("3. Do not save it on the backup drive, in an unencrypted note or text file, or in an email or chat message to yourself."));
+        steps.Children.Add(Text($"You will need this password to restore files, to change backup settings, and to open your backups on another computer. Rezen Backup never stores it, and it clears the clipboard {ClipboardClearDelay.TotalSeconds:0} seconds after you copy it.", "muted", 12));
+        panel.Children.Add(new Border { Child = steps, Padding = new Thickness(12), CornerRadius = new CornerRadius(8), Classes = { "card" } });
+
+        var saved = new CheckBox { Content = "I have saved this password somewhere safe" };
+        panel.Children.Add(saved);
+
+        var cancel = Btn("Cancel");
+        var use = Btn("Use This Password", primary: true);
+        use.IsEnabled = false;
+        cancel.IsCancel = true;
+        saved.IsCheckedChanged += (_, _) => use.IsEnabled = saved.IsChecked == true;
+
+        copy.Click += async (_, _) =>
+        {
+            if (await CopySecretAsync(owner, password))
+            {
+                copied = true;
+                status.Text = $"Copied. The clipboard will be cleared in {ClipboardClearDelay.TotalSeconds:0} seconds.";
+            }
+            else
+            {
+                status.Text = "Could not copy. Select the password above and copy it, or write it down.";
+            }
+        };
+        another.Click += async (_, _) =>
+        {
+            if (copied)
+            {
+                await ClearClipboardIfAsync(owner, password);
+                copied = false;
+            }
+
+            password = Security.PasswordGenerator.Generate();
+            shown.Text = password;
+            saved.IsChecked = false;
+            status.Text = "New password generated. Save this one instead; the previous password will not be used.";
+        };
+        cancel.Click += (_, _) => dlg.Close();
+        use.Click += (_, _) =>
+        {
+            result = password;
+            dlg.Close();
+        };
+
+        panel.Children.Add(Buttons(cancel, use));
+        dlg.Content = panel;
+        await dlg.ShowDialog(owner);
+
+        // Leave the copied password on the clipboard until the timer clears it (the user may still be saving it),
+        // but remove it straight away if they backed out.
+        if (result is null && copied)
+        {
+            await ClearClipboardIfAsync(owner, password);
+        }
+
+        return result;
+    }
+
+    /// <summary>Copies a secret and schedules it to be cleared, unless the user has copied something else since.</summary>
+    private static async Task<bool> CopySecretAsync(Window owner, string secret)
+    {
+        var clipboard = owner.Clipboard;
+        if (clipboard is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            await clipboard.SetTextAsync(secret);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.ExternalException)
+        {
+            return false;
+        }
+
+        DispatcherTimer.RunOnce(() => _ = ClearClipboardIfAsync(owner, secret), ClipboardClearDelay);
+        return true;
+    }
+
+    private static async Task ClearClipboardIfAsync(Window owner, string secret)
+    {
+        var clipboard = owner.Clipboard;
+        if (clipboard is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await clipboard.TryGetTextAsync() == secret)
+            {
+                await clipboard.ClearAsync();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.ExternalException)
+        {
+            // Clipboard busy or unavailable: nothing more we can safely do.
+        }
     }
 
     /// <summary>Shows the recovery key with Print / Save options.</summary>

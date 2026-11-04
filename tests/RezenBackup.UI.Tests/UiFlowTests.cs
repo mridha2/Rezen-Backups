@@ -106,6 +106,66 @@ public class UiFlowTests
         window.Close();
     }
 
+    /// <summary>The password step's generator popup: cancelling changes nothing; accepting requires "I have saved it" and fills both boxes.</summary>
+    [AvaloniaFact]
+    public async Task SetupWizard_GeneratePassword_FillsBothBoxesOnlyAfterSavedIsTicked()
+    {
+        BindingErrors.Sink.Clear();
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var (window, vm) = Open(f);
+        var wizard = Assert.IsType<SetupWizardViewModel>(vm.CurrentPage);
+        wizard.Sources.Add(f.Source);
+        await wizard.NextCommand.ExecuteAsync(null);
+        wizard.SelectedDestination = wizard.Destinations.First();
+        await wizard.NextCommand.ExecuteAsync(null);
+        Assert.True(wizard.IsPassword);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Generate Password…") && b.IsEffectivelyVisible);
+
+        // Cancel: nothing is filled in.
+        DialogDriver.Answer("Cancel");
+        var cancelled = wizard.GeneratePasswordCommand.ExecuteAsync(null);
+        await UiFixture.WaitUntil(() => cancelled.IsCompleted);
+        Assert.Equal(string.Empty, wizard.Password);
+        Assert.False(wizard.UsingGeneratedPassword);
+
+        string? shown = null;
+        bool useEnabledBeforeTick = true;
+        DialogDriver.Enqueue(w =>
+        {
+            DialogDriver.Click(w, "Generate Another");
+            shown = w.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text;
+            Assert.Contains("password manager", string.Join(" ", w.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+            var use = w.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Use This Password"));
+            useEnabledBeforeTick = use.IsEnabled;
+            w.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked = true;
+            Assert.True(use.IsEnabled);
+            DialogDriver.Click(w, "Use This Password");
+        });
+        var accepted = wizard.GeneratePasswordCommand.ExecuteAsync(null);
+        await UiFixture.WaitUntil(() => accepted.IsCompleted);
+        await accepted;
+
+        Assert.False(useEnabledBeforeTick);
+        Assert.NotNull(shown);
+        Assert.Equal(shown, wizard.Password);
+        Assert.Equal(shown, wizard.ConfirmPassword);
+        Assert.True(wizard.UsingGeneratedPassword);
+        Assert.Equal("Very strong", wizard.StrengthText.Split(" ·")[0]);
+        Assert.Equal(["Generated password", "Generated password"], DialogDriver.Opened);
+
+        // Editing the password by hand drops the "generated" notice.
+        wizard.Password += "x";
+        Assert.False(wizard.UsingGeneratedPassword);
+        wizard.Password = shown!;
+
+        await wizard.NextCommand.ExecuteAsync(null);
+        Assert.True(wizard.IsRecovery);
+        Assert.True(BindingErrors.Sink.Errors.Count == 0, string.Join("\n", BindingErrors.Sink.Errors.Distinct()));
+        window.Close();
+    }
+
     /// <summary>Every page renders without binding errors once a job exists.</summary>
     [AvaloniaFact]
     public async Task AllPages_RenderWithoutBindingErrors()

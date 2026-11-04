@@ -1319,6 +1319,12 @@ Where the implementation differs from the plan above, this section takes precede
   - Restore lets the user choose which drive to restore from.
   - "Stop using a drive" only forgets it on this computer.
 - **Periodic independent full snapshots:** every 30 or 90 days, per job.
+- **Password generator (§7).** The setup wizard and the change-password dialog can generate a password.
+  - Format: six groups of four characters from a 56-symbol alphabet with no look-alike characters, about 139 bits, from the OS CSPRNG (`PasswordGenerator`).
+  - A popup shows the password with Copy and Generate Another buttons and instructions for saving it in a password manager and on paper (not on the backup drive, and not in plain notes or email).
+  - The password is only filled in after the user ticks "I have saved this password".
+  - A copied password is cleared from the clipboard after 90 seconds, or straight away if the popup is cancelled, but only if the clipboard still holds it.
+  - Limit: clipboard history tools and other apps can still read the clipboard while it holds the password.
 
 **Still deferred:** TPM binding of the remembered key, and the optional NTFS ACL lockdown of the backup folder (§21.3).
 

@@ -233,8 +233,36 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
     partial void OnShowPasswordChanged(bool value) => OnPropertyChanged(nameof(PasswordChar));
 
+    /// <summary>Shown under the password boxes while they hold a password generated in the popup.</summary>
+    [ObservableProperty]
+    private bool _usingGeneratedPassword;
+
+    private bool _fillingGenerated;
+
+    [RelayCommand]
+    private async Task GeneratePassword()
+    {
+        var generated = await Dialogs.GeneratedPasswordAsync(Ui.MainWindow!);
+        if (generated is null)
+        {
+            return;
+        }
+
+        _fillingGenerated = true;
+        Password = generated;
+        ConfirmPassword = generated;
+        _fillingGenerated = false;
+        UsingGeneratedPassword = true;
+        Error = null;
+    }
+
     partial void OnPasswordChanged(string value)
     {
+        if (!_fillingGenerated)
+        {
+            UsingGeneratedPassword = false;
+        }
+
         var a = PasswordPolicy.Assess(value);
         StrengthValue = ((int)a.Strength + 1) * 20;
         StrengthText = value.Length == 0 ? string.Empty : $"{a.StrengthText} · estimated time to crack offline: {a.CrackTimeDisplay}";
