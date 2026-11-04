@@ -65,6 +65,12 @@ public static class RecoveryKit
         }
     }
 
+    public const string FileName = "Rezen Backup Recovery Key.txt";
+
+    /// <summary>Shown after the key file is saved. Saving on this computer is allowed; a second copy elsewhere is suggested.</summary>
+    public static string SavedMessage(string path) =>
+        $"Saved to {path}. If this computer is lost or stops working, that copy goes with it, so also print the key or copy the file to a USB stick.";
+
     /// <summary>
     /// Checks a save location. Blocks the backup drive itself (the key must never sit next to the backups) and warns
     /// about cloud-synced folders (spec §3, §12).
@@ -83,7 +89,7 @@ public static class RecoveryKit
             var volume = app.Platform.Volumes.GetVolumeForPath(root)?.RootPath ?? root;
             if (PathPolicy.IsSameOrUnder(full, volume) || PathPolicy.IsSameOrUnder(full, RepositoryLayout.BackupRootOnVolume(root)))
             {
-                return (false, "The recovery key must not be stored on the same drive as your backups. Choose a different removable device or print it.");
+                return (false, "The recovery key must not be stored on the same drive as your backups. Choose another drive (or a USB stick), or print it.");
             }
         }
 

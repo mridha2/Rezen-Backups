@@ -126,25 +126,20 @@
 
         <!-- Step 4: recovery key -->
         <StackPanel Spacing="12" IsVisible="{Binding IsRecovery}">
-          <TextBlock Classes="muted" TextWrapping="Wrap" Text="This offline recovery key can unlock your backups if you forget your password. Store it away from your computer and never on the backup drive." />
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="This recovery key can unlock your backups if you forget your password. Print it, or save it as a file on this computer or a USB stick. Never store it on the backup drive." />
           <Border Classes="card">
             <SelectableTextBlock Text="{Binding RecoveryKey}" FontSize="20" FontFamily="Menlo, Consolas, Courier New, monospace" TextWrapping="Wrap" HorizontalAlignment="Center" />
           </Border>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="Print" Command="{Binding PrintRecoveryKeyCommand}" />
-            <Button Content="Save to another device…" Command="{Binding SaveRecoveryKeyCommand}" />
+            <Button Content="Save Recovery Key File…" Command="{Binding SaveRecoveryKeyCommand}" />
             <Button Content="Skip" Classes="danger" Command="{Binding SkipRecoveryKeyCommand}" />
           </StackPanel>
           <Border Classes="banner-bad">
             <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Text="If you lose both your password and your recovery key, your encrypted backups cannot be recovered." />
           </Border>
-          <TextBlock Text="{Binding ConfirmGroupPrompt}" TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBox Text="{Binding ConfirmGroupInput}" Width="120" FontFamily="Menlo, Consolas, Courier New, monospace" />
-            <Button Content="Confirm" Command="{Binding ConfirmRecoveryKeyCommand}" />
-          </StackPanel>
-          <TextBlock Text="{Binding RecoveryMessage}" Classes="muted" TextWrapping="Wrap" />
-          <TextBlock Text="✓ Recovery key confirmed" Classes="good" FontWeight="SemiBold" IsVisible="{Binding RecoveryConfirmed}" />
+          <TextBlock Text="{Binding RecoveryMessage}" Classes="muted" TextWrapping="Wrap" IsVisible="{Binding RecoveryMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <CheckBox IsChecked="{Binding RecoveryConfirmed}" Content="I have saved my recovery key somewhere safe" FontWeight="SemiBold" />
         </StackPanel>
 
         <!-- Step 5: schedule -->

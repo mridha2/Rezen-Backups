@@ -63,13 +63,18 @@ public class UiFlowTests
         Assert.StartsWith("RZN1-", wizard.RecoveryKey, StringComparison.Ordinal);
         Assert.Equal(string.Empty, wizard.Password); // cleared from the view model once used
 
-        // Must confirm or skip the recovery key before continuing.
+        // Must tick "I have saved my recovery key" (or skip) before continuing. Saving the file on this computer is allowed.
         await wizard.NextCommand.ExecuteAsync(null);
         Assert.True(wizard.IsRecovery);
-        var groups = RecoveryKeyCodec.Groups(wizard.RecoveryKey);
-        var index = int.Parse(wizard.ConfirmGroupPrompt.Split("group ")[1].Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture) - 1;
-        wizard.ConfirmGroupInput = groups[index];
-        wizard.ConfirmRecoveryKeyCommand.Execute(null);
+        Assert.False(f.App.KeySets.Default!.RecoveryKeyConfirmed);
+        Dispatcher.UIThread.RunJobs();
+        var savedBox = window.GetVisualDescendants().OfType<CheckBox>().Single(c => Equals(c.Content, "I have saved my recovery key somewhere safe") && c.IsEffectivelyVisible);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), t => t.IsEffectivelyVisible);
+        var (allowed, warning) = RezenBackup.UI.Services.RecoveryKit.CheckLocation(f.App, Path.Combine(f.Root, "Documents", "key.txt"), wizard.SelectedDestination!.Root);
+        Assert.True(allowed);
+        Assert.Null(warning);
+        Assert.False(RezenBackup.UI.Services.RecoveryKit.CheckLocation(f.App, Path.Combine(wizard.SelectedDestination!.Root, "key.txt"), wizard.SelectedDestination!.Root).Allowed);
+        savedBox.IsChecked = true;
         Assert.True(wizard.RecoveryConfirmed);
 
         await wizard.NextCommand.ExecuteAsync(null); // schedule

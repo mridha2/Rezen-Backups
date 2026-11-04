@@ -198,14 +198,16 @@ public static class Dialogs
         return result.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
     }
 
-    public static async Task<string?> SaveFileAsync(Window owner, string title, string suggestedName, string extension)
+    public static async Task<string?> SaveFileAsync(Window owner, string title, string suggestedName, string extension, bool startInDocuments = false)
     {
+        var start = startInDocuments ? await owner.StorageProvider.TryGetWellKnownFolderAsync(WellKnownFolder.Documents) : null;
         var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = title,
             SuggestedFileName = suggestedName,
             DefaultExtension = extension,
             ShowOverwritePrompt = true,
+            SuggestedStartLocation = start,
         });
         return file?.TryGetLocalPath();
     }
@@ -430,18 +432,18 @@ public static class Dialogs
         var dlg = NewDialog("Recovery key", 560);
         var panel = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
         panel.Children.Add(Text("Your offline recovery key", "h3", 17));
-        panel.Children.Add(Text("Store it offline and away from your backup drive. Anyone with this key can unlock your backups.", "muted"));
+        panel.Children.Add(Text("Print it or save it as a file on this computer or a USB stick. Never store it on the backup drive. Anyone with this key can unlock your backups.", "muted"));
         var key = new SelectableTextBlock { Text = recoveryKey, FontSize = 18, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Menlo, Consolas, Courier New, monospace") };
         panel.Children.Add(new Border { Child = key, Padding = new Thickness(12), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), BorderBrush = Brushes.Gray });
         panel.Children.Add(Text($"Key set fingerprint: {RecoveryKit.Fingerprint(keySetId)}", "label", 12));
         var status = Text(string.Empty, "muted", 12);
         var print = Btn("Print");
-        var save = Btn("Save to another device\u2026");
+        var save = Btn("Save Recovery Key File\u2026");
         var close = Btn("Close", primary: true);
         print.Click += (_, _) => status.Text = RecoveryKit.Print(RecoveryKit.Document(recoveryKey, keySetId)) ? "Sent to your default printer." : "Printing failed.";
         save.Click += async (_, _) =>
         {
-            var path = await SaveFileAsync(dlg, "Save recovery key", "Rezen Backup Recovery Key.txt", "txt");
+            var path = await SaveFileAsync(dlg, "Save recovery key file", RecoveryKit.FileName, "txt", startInDocuments: true);
             if (path is null)
             {
                 return;
@@ -461,7 +463,7 @@ public static class Dialogs
             }
 
             await File.WriteAllTextAsync(path, RecoveryKit.Document(recoveryKey, keySetId));
-            status.Text = "Saved.";
+            status.Text = RecoveryKit.SavedMessage(path);
         };
         close.Click += (_, _) => dlg.Close();
         panel.Children.Add(status);
