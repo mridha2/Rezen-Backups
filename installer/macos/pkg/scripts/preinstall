@@ -1,0 +1,15 @@
+#!/bin/bash
+# Runs as root before the app is copied. Stops running copies (window and background agent, from any location)
+# so the new version replaces them cleanly. A backup that is interrupted stays ".incomplete" and is redone next run.
+user=$(stat -f %Su /dev/console 2>/dev/null)
+if [[ -n "$user" && "$user" != "root" ]]; then
+  uid=$(id -u "$user" 2>/dev/null) && launchctl bootout "gui/$uid/com.rezen.backup.agent" 2>/dev/null
+fi
+pattern="Rezen Backup.app/Contents/MacOS/RezenBackup"
+pkill -TERM -f "$pattern" 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  pgrep -f "$pattern" >/dev/null || break
+  sleep 1
+done
+pkill -KILL -f "$pattern" 2>/dev/null
+exit 0

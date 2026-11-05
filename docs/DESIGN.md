@@ -386,9 +386,9 @@ RZN1-7KQ4-HX2M-P9TD-…-W3QF-C8      (14 groups of 4 Crockford-Base32 characters
 
 1. **Setup step 4:** RS is generated and shown. The user can then:
    - **Print it** through the Windows print dialog, which is local and offline. The app shows a reminder not to use a cloud print service.
-   - **Save it to a file** on another removable device. Saving is **blocked** to any volume that holds a Rezen repository for this Key Set, and a warning appears if the target is a cloud-synced folder.
+   - **Save it to a file**, on this computer (the picker starts in Documents) or on another device. Saving is **blocked** to any volume that holds a Rezen repository for this Key Set, and a warning appears if the target is a cloud-synced folder. After saving, the app suggests also printing it or copying it to a USB stick, since a copy kept only on this computer is lost with the computer.
    - **Skip it**, after a strong warning: "If you lose both your password and your recovery key, your encrypted backups cannot be recovered."
-2. **Confirmation:** the user re-types two randomly chosen groups. Only then is the Security page set to "Recovery key: Configured".
+2. **Confirmation:** the user ticks "I have saved my recovery key somewhere safe" (or explicitly skips). Only then is the Security page set to "Recovery key: Configured". The earlier design asked the user to re-type a random group; it was dropped as unnecessary friction.
 3. **Viewing it later:** an unlocked user can show the recovery key again after re-entering the password. This helps users who skipped step 1, and it gives an attacker nothing they don't already have with the password.
 4. **Rotation:** RS cannot be changed without re-encrypting data. "My recovery key may be exposed" therefore leads to **Re-key** (§8.4), which starts a new repository with a new RS and keeps the old one until the new one is verified.
 5. **Never stored by Rezen:** not in the database, the registry, logs, the drive, or DPAPI. Recovery uses no internet and has no back door (spec §12).
@@ -1319,6 +1319,33 @@ Where the implementation differs from the plan above, this section takes precede
   - Restore lets the user choose which drive to restore from.
   - "Stop using a drive" only forgets it on this computer.
 - **Periodic independent full snapshots:** every 30 or 90 days, per job.
+- **Backup drive plugged in (§17, §21.2).** Setting "When a backup drive is connected":
+  - **Ask (default).** The agent opens Rezen Backup with "Your backup drive "X" is connected. Back up now?", listing
+    each job on that drive with its last backup time. *Back Up Now* uses the normal path, so it asks for the
+    password unless a backup-only key is remembered.
+  - **Back up automatically if due.** This was the behaviour before.
+  - **Do nothing.**
+
+  Only real plug-ins count: drives already connected when the agent starts (for example at login) don't prompt. Jobs
+  that are already running are skipped. Each job can opt out with "Offer to back up this job when its backup drive is
+  connected". The request travels from agent to window through the local database (`ui.drivePrompt`, with no
+  secrets). Settings from older versions with the automatic option turned off become *Do nothing*.
+- **Backup pipeline (§13, §16.1).** One walker thread lists folders, compares files with the previous snapshot,
+  splits changed files into chunks and hashes them. Compression runs on the thread pool, bounded to 2 × CPU cores
+  and 64 MiB of pending data. One background writer thread encrypts each 32 MiB pack, writes it, flushes it to the
+  device, reads it back uncached, compares it and authenticates it. The walker keeps reading in the meantime, and blocks
+  when the writer is a pack behind, so a slow drive limits memory, not correctness. The chunk index is only updated
+  on the walker thread, from packs the writer reports as finished. On failure or cancel the writer is stopped before
+  the repository lock is released, and the snapshot stays `.incomplete`.
+  - Measured on an M-series MacBook Pro (internal SSD, 20,304 files, 2.7 GB): the first backup engine time went from
+    12.1 s to 5.5 s (about 530 MB/s, with full flush and read-back). An unchanged incremental run takes 0.3 s.
+    On external drives the drive's own write speed is now the limit.
+- **Password generator (§7).** The setup wizard and the change-password dialog can generate a password.
+  - Format: six groups of four characters from a 56-symbol alphabet with no look-alike characters, about 139 bits, from the OS CSPRNG (`PasswordGenerator`).
+  - A popup shows the password with Copy and Generate Another buttons and instructions for saving it in a password manager and on paper (not on the backup drive, and not in plain notes or email).
+  - The password is only filled in after the user ticks "I have saved this password".
+  - A copied password is cleared from the clipboard after 90 seconds, or straight away if the popup is cancelled, but only if the clipboard still holds it.
+  - Limit: clipboard history tools and other apps can still read the clipboard while it holds the password.
 
 **Still deferred:** TPM binding of the remembered key, and the optional NTFS ACL lockdown of the backup folder (§21.3).
 

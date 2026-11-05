@@ -332,3 +332,47 @@ public class OfflineTests
     [Fact]
     public void ApplicationAssemblyLoads() => Assert.NotNull(Assembly.Load("RezenBackup.Application"));
 }
+
+public class PasswordGeneratorTests
+{
+    [Fact]
+    public void Generated_HasExpectedShapeAndAlphabet()
+    {
+        var pw = PasswordGenerator.Generate();
+        var groups = pw.Split(PasswordGenerator.Separator);
+        Assert.Equal(PasswordGenerator.Groups, groups.Length);
+        Assert.All(groups, g =>
+        {
+            Assert.Equal(PasswordGenerator.GroupLength, g.Length);
+            Assert.All(g, c => Assert.Contains(c, PasswordGenerator.Alphabet));
+        });
+        Assert.DoesNotContain(PasswordGenerator.Alphabet, c => "0O1lI".Contains(c, StringComparison.Ordinal));
+        Assert.True(PasswordGenerator.EntropyBits > 128);
+    }
+
+    [Fact]
+    public void Generated_IsAlwaysVeryStrong_AndUnique()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < 500; i++)
+        {
+            var pw = PasswordGenerator.Generate();
+            var a = PasswordPolicy.Assess(pw);
+            Assert.True(a.MeetsRequirements);
+            Assert.Equal(PasswordStrength.VeryStrong, a.Strength);
+            Assert.True(seen.Add(pw));
+        }
+    }
+
+    [Fact]
+    public void Generated_UsesTheWholeAlphabet()
+    {
+        var used = new HashSet<char>();
+        for (int i = 0; i < 200; i++)
+        {
+            used.UnionWith(PasswordGenerator.Generate().Replace("-", string.Empty, StringComparison.Ordinal));
+        }
+
+        Assert.Equal(PasswordGenerator.Alphabet.Length, used.Count);
+    }
+}

@@ -51,9 +51,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Build app and dmg (unsigned)
+      - name: Build app, dmg and pkg (unsigned)
         run: ./installer/macos/build-app.sh arm64
       - uses: actions/upload-artifact@v4
         with:
           name: RezenBackup-macos
-          path: artifacts/macos/arm64/*.dmg
+          path: |
+            artifacts/macos/arm64/*.dmg
+            artifacts/macos/arm64/*.pkg

@@ -3,6 +3,9 @@
     <RootNamespace>RezenBackup.Agent</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="RezenBackup.UI.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\RezenBackup.Application\RezenBackup.Application.csproj" />
   </ItemGroup>
 </Project>

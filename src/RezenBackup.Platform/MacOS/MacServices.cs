@@ -325,7 +325,8 @@ public sealed class MacVolumeInspector : IVolumeInspector
                 var info = DiskInfo(root);
                 result.Add(new VolumeInfo(
                     root,
-                    d.VolumeLabel.Length > 0 ? d.VolumeLabel : Path.GetFileName(root.TrimEnd('/')),
+                    // .NET reports the mount path as the "label" on macOS; the volume name is the last path part.
+                    d.VolumeLabel.Length > 0 && !d.VolumeLabel.Contains('/', StringComparison.Ordinal) ? d.VolumeLabel : Path.GetFileName(root.TrimEnd('/')),
                     info.FileSystem ?? d.DriveFormat,
                     d.TotalSize,
                     d.AvailableFreeSpace,

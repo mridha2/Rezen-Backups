@@ -63,13 +63,18 @@ public class UiFlowTests
         Assert.StartsWith("RZN1-", wizard.RecoveryKey, StringComparison.Ordinal);
         Assert.Equal(string.Empty, wizard.Password); // cleared from the view model once used
 
-        // Must confirm or skip the recovery key before continuing.
+        // Must tick "I have saved my recovery key" (or skip) before continuing. Saving the file on this computer is allowed.
         await wizard.NextCommand.ExecuteAsync(null);
         Assert.True(wizard.IsRecovery);
-        var groups = RecoveryKeyCodec.Groups(wizard.RecoveryKey);
-        var index = int.Parse(wizard.ConfirmGroupPrompt.Split("group ")[1].Split(' ')[0], System.Globalization.CultureInfo.InvariantCulture) - 1;
-        wizard.ConfirmGroupInput = groups[index];
-        wizard.ConfirmRecoveryKeyCommand.Execute(null);
+        Assert.False(f.App.KeySets.Default!.RecoveryKeyConfirmed);
+        Dispatcher.UIThread.RunJobs();
+        var savedBox = window.GetVisualDescendants().OfType<CheckBox>().Single(c => Equals(c.Content, "I have saved my recovery key somewhere safe") && c.IsEffectivelyVisible);
+        Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), t => t.IsEffectivelyVisible);
+        var (allowed, warning) = RezenBackup.UI.Services.RecoveryKit.CheckLocation(f.App, Path.Combine(f.Root, "Documents", "key.txt"), wizard.SelectedDestination!.Root);
+        Assert.True(allowed);
+        Assert.Null(warning);
+        Assert.False(RezenBackup.UI.Services.RecoveryKit.CheckLocation(f.App, Path.Combine(wizard.SelectedDestination!.Root, "key.txt"), wizard.SelectedDestination!.Root).Allowed);
+        savedBox.IsChecked = true;
         Assert.True(wizard.RecoveryConfirmed);
 
         await wizard.NextCommand.ExecuteAsync(null); // schedule
@@ -104,6 +109,106 @@ public class UiFlowTests
         AssertPageRendered(window, nameof(DashboardView));
         Assert.True(BindingErrors.Sink.Errors.Count == 0, string.Join("\n", BindingErrors.Sink.Errors.Distinct()));
         window.Close();
+    }
+
+    /// <summary>The password step's generator popup: cancelling changes nothing; accepting requires "I have saved it" and fills both boxes.</summary>
+    [AvaloniaFact]
+    public async Task SetupWizard_GeneratePassword_FillsBothBoxesOnlyAfterSavedIsTicked()
+    {
+        BindingErrors.Sink.Clear();
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var (window, vm) = Open(f);
+        var wizard = Assert.IsType<SetupWizardViewModel>(vm.CurrentPage);
+        wizard.Sources.Add(f.Source);
+        await wizard.NextCommand.ExecuteAsync(null);
+        wizard.SelectedDestination = wizard.Destinations.First();
+        await wizard.NextCommand.ExecuteAsync(null);
+        Assert.True(wizard.IsPassword);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Content, "Generate Password…") && b.IsEffectivelyVisible);
+
+        // Cancel: nothing is filled in.
+        DialogDriver.Answer("Cancel");
+        var cancelled = wizard.GeneratePasswordCommand.ExecuteAsync(null);
+        await UiFixture.WaitUntil(() => cancelled.IsCompleted);
+        Assert.Equal(string.Empty, wizard.Password);
+        Assert.False(wizard.UsingGeneratedPassword);
+
+        string? shown = null;
+        bool useEnabledBeforeTick = true;
+        DialogDriver.Enqueue(w =>
+        {
+            DialogDriver.Click(w, "Generate Another");
+            shown = w.GetVisualDescendants().OfType<SelectableTextBlock>().Single().Text;
+            Assert.Contains("password manager", string.Join(" ", w.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)), StringComparison.Ordinal);
+            var use = w.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Use This Password"));
+            useEnabledBeforeTick = use.IsEnabled;
+            w.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked = true;
+            Assert.True(use.IsEnabled);
+            DialogDriver.Click(w, "Use This Password");
+        });
+        var accepted = wizard.GeneratePasswordCommand.ExecuteAsync(null);
+        await UiFixture.WaitUntil(() => accepted.IsCompleted);
+        await accepted;
+
+        Assert.False(useEnabledBeforeTick);
+        Assert.NotNull(shown);
+        Assert.Equal(shown, wizard.Password);
+        Assert.Equal(shown, wizard.ConfirmPassword);
+        Assert.True(wizard.UsingGeneratedPassword);
+        Assert.Equal("Very strong", wizard.StrengthText.Split(" ·")[0]);
+        Assert.Equal(["Generated password", "Generated password"], DialogDriver.Opened);
+
+        // Editing the password by hand drops the "generated" notice.
+        wizard.Password += "x";
+        Assert.False(wizard.UsingGeneratedPassword);
+        wizard.Password = shown!;
+
+        await wizard.NextCommand.ExecuteAsync(null);
+        Assert.True(wizard.IsRecovery);
+        Assert.True(BindingErrors.Sink.Errors.Count == 0, string.Join("\n", BindingErrors.Sink.Errors.Distinct()));
+        window.Close();
+    }
+
+    /// <summary>The backup name defaults to today's date, takes the first folder's name, and never overrides a typed name.</summary>
+    [AvaloniaFact]
+    public void SetupWizard_DefaultBackupName_HasTodaysDate()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var (window, vm) = Open(f);
+        var wizard = Assert.IsType<SetupWizardViewModel>(vm.CurrentPage);
+        var today = DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal($"Backup {today}", wizard.JobName);
+        Assert.Equal("Backup 2026-01-09", SetupWizardViewModel.DefaultJobName(null, new DateTime(2026, 1, 9)));
+
+        wizard.AddSource(f.Source);
+        Assert.Equal($"{Path.GetFileName(f.Source)} {today}", wizard.JobName);
+
+        // A name the user typed is kept when the folders change.
+        wizard.RemoveSourceCommand.Execute(f.Source);
+        wizard.JobName = "Accounts";
+        wizard.AddSource(f.Source);
+        Assert.Equal("Accounts", wizard.JobName);
+        window.Close();
+    }
+
+    /// <summary>The main window fits the screen it opens on, from a small laptop to a large display.</summary>
+    [Theory]
+    [InlineData(1728, 1009, null, null, 1100, 720)]     // 14" MacBook Pro (menu bar and Dock excluded)
+    [InlineData(1280, 705, null, null, 1100, 564)]      // 13" laptop: shorter than the default
+    [InlineData(1366, 728, null, null, 1100, 582.4)]    // common Windows laptop with taskbar
+    [InlineData(2560, 1400, null, null, 1100, 720)]     // large display: default size, not stretched
+    [InlineData(1728, 1009, 1500.0, 2000.0, 1500, 969)] // saved size is kept, but clamped to the screen
+    [InlineData(800, 500, null, null, 784, 460)]        // tiny screen: minimums shrink so the window still fits
+    public void WindowPlacement_FitsTheScreen(double availW, double availH, double? savedW, double? savedH, double expectW, double expectH)
+    {
+        var (w, h, minW, minH) = RezenBackup.UI.Services.WindowPlacement.Fit(availW, availH, savedW, savedH);
+        Assert.Equal(expectW, w, 1);
+        Assert.Equal(expectH, h, 1);
+        Assert.True(w <= availW && h + 28 <= availH, "window plus title bar must fit");
+        Assert.True(minW <= w && minH <= h);
     }
 
     /// <summary>Every page renders without binding errors once a job exists.</summary>
@@ -268,6 +373,80 @@ public class UiFlowTests
         Assert.Equal(RunOutcome.Success, run.Outcome);
         f.App.SaveSettings(f.App.Settings with { SetupCompleted = true });
         return job;
+    }
+
+    /// <summary>Plugging in the backup drive asks (default), backs up when due, or does nothing, as set in Settings.</summary>
+    [AvaloniaFact]
+    public async Task DriveConnected_AgentAsksByDefault_AndRespectsTheSetting()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var job = await CreateJobWithBackupAsync(f);
+        var driveId = f.App.Db.RepositoriesForJob(job.Id).Single().DriveId;
+        var drive = new RezenBackup.DriveMonitor.ConnectedDrive(driveId, f.Drive, null);
+        var host = new RezenBackup.Agent.AgentHost(f.App);
+        IReadOnlyList<Guid>? asked = null;
+        host.BackupPromptRequested += (_, jobs) => asked = jobs;
+
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.Ask, f.App.Settings.OnDriveConnected);
+        host.OnDriveArrived(drive);
+        Assert.Equal([job.Id], asked);
+        Assert.Single(f.App.Db.Runs(job.Id)); // asking never starts a backup by itself
+
+        asked = null;
+        f.App.SaveSettings(f.App.Settings with { OnDriveConnected = RezenBackup.Application.DriveConnectAction.DoNothing });
+        host.OnDriveArrived(drive);
+        Assert.Null(asked);
+
+        f.App.SaveSettings(f.App.Settings with { OnDriveConnected = RezenBackup.Application.DriveConnectAction.BackUpIfDue });
+        host.OnDriveArrived(drive);
+        Assert.Null(asked);
+        Assert.Single(f.App.Db.Runs(job.Id)); // nothing is due right after a successful backup
+        await host.DisposeAsync();
+    }
+
+    /// <summary>The "Back up now?" prompt names the drive and the job; Back Up Now runs it (asking for the password), Cancel does not.</summary>
+    [AvaloniaFact]
+    public async Task DrivePrompt_BackUpNow_RunsTheJob_CancelDoesNot()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var job = await CreateJobWithBackupAsync(f);
+        var (window, _) = Open(f);
+        var prompt = new RezenBackup.UI.Services.UiSignals.DrivePromptRequest(DateTimeOffset.UtcNow.UtcTicks, "BACKUP-USB", [job.Id]);
+
+        DialogDriver.Answer("Not Now");
+        await f.Ui.AskToBackUpAsync(prompt);
+        Assert.Single(f.App.Db.Runs(job.Id));
+
+        string? message = null;
+        DialogDriver.Enqueue(w =>
+        {
+            message = string.Join(" ", w.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+            DialogDriver.Click(w, "Back Up Now");
+        });
+        DialogDriver.Unlock(UiFixture.Password);
+        var ask = f.Ui.AskToBackUpAsync(prompt);
+        await UiFixture.WaitUntil(() => ask.IsCompleted);
+        await ask;
+        Assert.Contains("\"BACKUP-USB\" is connected", message, StringComparison.Ordinal);
+        Assert.Contains("Company Documents", message, StringComparison.Ordinal);
+        await UiFixture.WaitUntil(() => f.App.Db.Runs(job.Id).Count == 2 && f.App.Db.Runs(job.Id).All(r => r.Outcome != RunOutcome.Running));
+        Assert.Equal(RunOutcome.Success, f.App.Db.Runs(job.Id).First().Outcome);
+        window.Close();
+    }
+
+    /// <summary>Settings saved before the drive-connect choice existed keep an explicit "off".</summary>
+    [AvaloniaFact]
+    public void DriveConnectSetting_MigratesFromOlderVersions()
+    {
+        using var f = new UiFixture();
+        f.App.Db.SetSetting("app.settings", "{}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.Ask, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
+        f.App.Db.SetSetting("app.settings", "{\"AutoBackupOnDriveConnect\":false}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.DoNothing, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
+        f.App.Db.SetSetting("app.settings", "{\"AutoBackupOnDriveConnect\":false,\"OnDriveConnected\":\"BackUpIfDue\"}");
+        Assert.Equal(RezenBackup.Application.DriveConnectAction.BackUpIfDue, RezenBackup.Application.AppSettings.Load(f.App.Db).OnDriveConnected);
     }
 
     /// <summary>A lock request during a key-using operation waits for it instead of freeing keys underneath it.</summary>

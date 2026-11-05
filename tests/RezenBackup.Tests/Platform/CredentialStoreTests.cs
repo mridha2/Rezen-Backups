@@ -77,6 +77,22 @@ public class CredentialStoreTests
         }
     }
 
+    /// <summary>Drive names shown to the user ("Your backup drive "BACKUP" is connected") are volume names, not paths.</summary>
+    [Fact]
+    public void MacVolumes_AreNamedByVolumeName_NotMountPath()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        foreach (var v in new RezenBackup.Platform.MacOS.MacVolumeInspector().GetVolumes())
+        {
+            Assert.DoesNotContain('/', v.Label);
+            Assert.Equal(Path.GetFileName(v.RootPath.TrimEnd('/')), v.Label);
+        }
+    }
+
     [Fact]
     public void MacMetadata_ReportsInodeAndChangeTime()
     {

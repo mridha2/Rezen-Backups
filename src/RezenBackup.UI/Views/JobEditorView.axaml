@@ -135,7 +135,7 @@
             </StackPanel>
             <ComboBox ItemsSource="{Binding Intervals}" SelectedIndex="{Binding IntervalIndex}" IsVisible="{Binding ShowsInterval}" Width="260" />
             <CheckBox Content="Run missed backups when the computer is next on" IsChecked="{Binding RunMissed}" />
-            <CheckBox Content="Run a pending backup automatically when the backup drive is connected" IsChecked="{Binding AutoRunOnConnect}" />
+            <CheckBox Content="Offer to back up this job when its backup drive is connected (see Settings)" IsChecked="{Binding AutoRunOnConnect}" />
             <CheckBox Content="Eject the backup drive after a successful backup" IsChecked="{Binding EjectAfter}" />
             <CheckBox Content="Do not start scheduled backups while running on battery" IsChecked="{Binding SkipOnBattery}" />
           </StackPanel>

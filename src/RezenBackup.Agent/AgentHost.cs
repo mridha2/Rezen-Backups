@@ -59,7 +59,10 @@ public sealed class AgentHost : IAsyncDisposable
 
         _watcher = new DriveWatcher(_app.Platform.Volumes, () => _app.Db.Drives().Select(d => d.LastMountPath).OfType<string>(), _app.Loggers.CreateLogger("Drives"));
         _watcher.Arrived += OnDriveArrived;
+        // Drives already connected when the agent starts (e.g. at login) are not "plugged in": don't ask about them.
+        _startupScan = true;
         _watcher.Start(TimeSpan.FromSeconds(5));
+        _startupScan = false;
 
         var server = Task.Run(() => ServeAsync(token), token);
         _logger.LogInformation("Agent started (version {Version}).", RezenApp.AppVersion);
@@ -115,15 +118,42 @@ public sealed class AgentHost : IAsyncDisposable
         }
     }
 
-    private void OnDriveArrived(ConnectedDrive drive)
+    /// <summary>
+    /// Raised (on a background thread) when a backup drive is connected and the user wants to be asked: the host
+    /// opens Rezen Backup with a "Back up now?" prompt for these jobs.
+    /// </summary>
+    public event Action<ConnectedDrive, IReadOnlyList<Guid>>? BackupPromptRequested;
+
+    private volatile bool _startupScan;
+
+    internal void OnDriveArrived(ConnectedDrive drive)
     {
-        if (PausedAll || !_app.Settings.AutoBackupOnDriveConnect)
+        var mode = _app.Settings.OnDriveConnected;
+        if (PausedAll || mode == DriveConnectAction.DoNothing)
         {
             return;
         }
 
         var reposOnDrive = _app.Db.Repositories().Where(r => r.DriveId == drive.DriveId).ToList();
-        foreach (var job in _app.Db.Jobs().Where(j => j.Enabled && j.AutoRunOnConnect && reposOnDrive.Any(r => r.JobId == j.Id)))
+        var jobsOnDrive = _app.Db.Jobs().Where(j => j.Enabled && j.AutoRunOnConnect && reposOnDrive.Any(r => r.JobId == j.Id)).ToList();
+        if (mode == DriveConnectAction.Ask)
+        {
+            if (_startupScan)
+            {
+                return;
+            }
+
+            var idle = jobsOnDrive.Where(j => _app.Backups.Active(j.Id) is null && !_tasks.ContainsKey(j.Id)).Select(j => j.Id).ToList();
+            if (idle.Count > 0)
+            {
+                _logger.LogInformation("Registered drive connected; asking whether to back up {Count} job(s)", idle.Count);
+                BackupPromptRequested?.Invoke(drive, idle);
+            }
+
+            return;
+        }
+
+        foreach (var job in jobsOnDrive)
         {
             // Drive rotation: catch up based on the newest backup *on this drive*, not on any drive.
             var repoIds = reposOnDrive.Where(r => r.JobId == job.Id).Select(r => r.Id).ToHashSet();

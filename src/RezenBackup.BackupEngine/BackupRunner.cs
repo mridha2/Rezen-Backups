@@ -59,6 +59,7 @@ public sealed class BackupRunner
         var layout = _repo.Layout;
 
         using var repoLock = RepositoryLock.Acquire(layout, runId);
+        SnapshotWriter? writer = null;
         try
         {
             CleanTemp(layout);
@@ -97,7 +98,7 @@ public sealed class BackupRunner
             }
 
             SnapshotMeta.For(snapshotId, _repo.RepositoryId, SnapshotState.Incomplete).Write(incompleteDir, _repo.Ops);
-            var writer = new SnapshotWriter(_repo, options, RepositoryLayout.JournalPath(incompleteDir), journal);
+            writer = new SnapshotWriter(_repo, options, RepositoryLayout.JournalPath(incompleteDir), journal);
             writer.WriteJournal();
             writer.EnsureSpace(0);
 
@@ -234,6 +235,8 @@ public sealed class BackupRunner
         }
         finally
         {
+            // Stop the background pack writer before the repository lock is released.
+            writer?.Dispose();
             _repo.CloseReaders();
             _repo.Keys.ForgetWrittenObjectKeys();
         }

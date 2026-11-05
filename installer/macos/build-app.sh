@@ -1,8 +1,9 @@
 #!/bin/bash
-# Builds "Rezen Backup.app" (self-contained, no runtime download) and a .dmg.
+# Builds "Rezen Backup.app" (self-contained, no runtime download), a drag-to-Applications .dmg and an installer .pkg.
 #
 # Optional signing/notarization — credentials come from the environment, never from this repository:
 #   REZEN_MAC_SIGN_IDENTITY   e.g. "Developer ID Application: Rezen (TEAMID)"
+#   REZEN_MAC_INSTALLER_IDENTITY  e.g. "Developer ID Installer: Rezen (TEAMID)" (signs the .pkg)
 #   REZEN_NOTARY_PROFILE      a `xcrun notarytool store-credentials` keychain profile name
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -22,7 +23,7 @@ sed "s/__VERSION__/$VERSION/g" installer/macos/Info.plist > "$APP/Contents/Info.
 
 # Icon: render the PNG into an .iconset and convert with iconutil.
 ICONSET="$OUT/rezen.iconset"; mkdir -p "$ICONSET"
-SRC=src/RezenBackup.UI/Assets/rezen-256.png
+SRC=installer/icons/rezen-1024.png   # regenerate with: swift installer/icons/make-icons.swift installer/icons/rezen-source.png
 for s in 16 32 128 256 512; do
   sips -z $s $s "$SRC" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
   d=$((s*2)); sips -z $d $d "$SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
@@ -52,5 +53,30 @@ if [[ -n "${REZEN_MAC_SIGN_IDENTITY:-}" ]]; then
     xcrun stapler staple "$DMG"
   fi
 fi
+# Installer package (.pkg): the macOS Installer wizard, always installing into /Applications.
+PKG="$OUT/RezenBackup-$VERSION-$ARCH.pkg"
+PKGWORK="$OUT/pkgwork"; rm -rf "$PKGWORK"; mkdir -p "$PKGWORK/root" "$PKGWORK/resources"
+cp -R "$APP" "$PKGWORK/root/"
+pkgbuild --analyze --root "$PKGWORK/root" "$PKGWORK/component.plist" >/dev/null
+# Never "upgrade" a copy found elsewhere (e.g. a build folder): always install into /Applications.
+plutil -replace 0.BundleIsRelocatable -bool NO "$PKGWORK/component.plist"
+pkgbuild --root "$PKGWORK/root" --component-plist "$PKGWORK/component.plist" --install-location /Applications \
+  --identifier com.rezen.backup --version "$VERSION" --scripts installer/macos/pkg/scripts \
+  "$PKGWORK/RezenBackup-component.pkg" >/dev/null
+cp installer/macos/pkg/resources/*.html "$PKGWORK/resources/"
+cp installer/windows/License.rtf "$PKGWORK/resources/"
+HOSTARCH="$([[ "$ARCH" == "arm64" ]] && echo arm64 || echo x86_64)"
+sed -e "s/__VERSION__/$VERSION/g" -e "s/__HOSTARCH__/$HOSTARCH/g" installer/macos/pkg/distribution.xml > "$PKGWORK/distribution.xml"
+SIGN_PKG=()
+if [[ -n "${REZEN_MAC_INSTALLER_IDENTITY:-}" ]]; then SIGN_PKG=(--sign "$REZEN_MAC_INSTALLER_IDENTITY"); fi   # "Developer ID Installer: …"
+productbuild --distribution "$PKGWORK/distribution.xml" --resources "$PKGWORK/resources" --package-path "$PKGWORK" \
+  ${SIGN_PKG[@]+"${SIGN_PKG[@]}"} "$PKG" >/dev/null
+rm -rf "$PKGWORK"
+if [[ -n "${REZEN_MAC_INSTALLER_IDENTITY:-}" && -n "${REZEN_NOTARY_PROFILE:-}" ]]; then
+  xcrun notarytool submit "$PKG" --keychain-profile "$REZEN_NOTARY_PROFILE" --wait
+  xcrun stapler staple "$PKG"
+fi
+
 echo "Built: $APP"
 echo "Built: $DMG"
+echo "Built: $PKG"

@@ -178,7 +178,7 @@ internal static class Program
         var ks = app.KeySets.Create(password, opts.Get("name") ?? "Rezen Backup password");
         ks.Secret.Dispose();
         Console.WriteLine();
-        Console.WriteLine("RECOVERY KEY — store it offline (print it, or save it on a different removable device):");
+        Console.WriteLine("RECOVERY KEY — print it or save it somewhere safe (this computer or a USB stick, never the backup drive):");
         Console.WriteLine();
         Console.WriteLine("    " + ks.RecoveryKey);
         Console.WriteLine();
@@ -186,10 +186,8 @@ internal static class Program
         Console.WriteLine("Never store the recovery key on the same drive as your backups.");
         if (!opts.Has("password-stdin"))
         {
-            var groups = Crypto.RecoveryKeyCodec.Groups(ks.RecoveryKey);
-            int i = Crypto.CryptoRandom.NextInt(groups.Length);
-            Console.Write($"To confirm you saved it, type group {i + 1}: ");
-            if (string.Equals(Console.ReadLine()?.Trim(), groups[i], StringComparison.OrdinalIgnoreCase))
+            Console.Write("Have you saved the recovery key somewhere safe? [y/N]: ");
+            if (Console.ReadLine()?.Trim().ToUpperInvariant() is "Y" or "YES")
             {
                 app.KeySets.ConfirmRecoveryKeySaved(ks.Info.Id);
                 Console.WriteLine("Recovery key confirmed.");

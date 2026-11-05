@@ -35,7 +35,6 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
     private readonly bool _newJobOnly;
     private NewKeySet? _keySet;
-    private int _confirmIndex;
 
     public SetupWizardViewModel(UiContext ui, bool newJobOnly)
         : base(ui)
@@ -95,8 +94,18 @@ public sealed partial class SetupWizardViewModel : PageViewModel
     [ObservableProperty]
     private string? _selectedSource;
 
+    /// <summary>The name the wizard filled in itself; replaced when a folder is picked, unless the user typed their own.</summary>
+    private string _autoJobName = DefaultJobName(null, DateTime.Now);
+
     [ObservableProperty]
-    private string _jobName = "My Files";
+    private string _jobName = DefaultJobName(null, DateTime.Now);
+
+    /// <summary>
+    /// Default backup name with today's date, e.g. "Backup 2026-11-04" or "Documents 2026-11-04" once a folder is
+    /// picked. ISO dates are safe in folder names on every platform and sort in order.
+    /// </summary>
+    public static string DefaultJobName(string? folderName, DateTime today) =>
+        $"{(string.IsNullOrWhiteSpace(folderName) ? "Backup" : folderName)} {today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}";
 
     [RelayCommand]
     private async Task AddFolders()
@@ -116,7 +125,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
     }
 
-    private void AddSource(string path)
+    internal void AddSource(string path)
     {
         var overlap = PathPolicy.CheckNewSource(path, Sources);
         switch (overlap.Kind)
@@ -137,9 +146,10 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
 
         Sources.Add(path);
-        if (Sources.Count == 1 && JobName == "My Files")
+        if (Sources.Count == 1 && JobName == _autoJobName)
         {
-            JobName = Path.GetFileName(path.TrimEnd('/', '\\')) is { Length: > 0 } n ? n : "My Files";
+            _autoJobName = DefaultJobName(Path.GetFileName(path.TrimEnd('/', '\\')), DateTime.Now);
+            JobName = _autoJobName;
         }
     }
 
@@ -233,8 +243,36 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
     partial void OnShowPasswordChanged(bool value) => OnPropertyChanged(nameof(PasswordChar));
 
+    /// <summary>Shown under the password boxes while they hold a password generated in the popup.</summary>
+    [ObservableProperty]
+    private bool _usingGeneratedPassword;
+
+    private bool _fillingGenerated;
+
+    [RelayCommand]
+    private async Task GeneratePassword()
+    {
+        var generated = await Dialogs.GeneratedPasswordAsync(Ui.MainWindow!);
+        if (generated is null)
+        {
+            return;
+        }
+
+        _fillingGenerated = true;
+        Password = generated;
+        ConfirmPassword = generated;
+        _fillingGenerated = false;
+        UsingGeneratedPassword = true;
+        Error = null;
+    }
+
     partial void OnPasswordChanged(string value)
     {
+        if (!_fillingGenerated)
+        {
+            UsingGeneratedPassword = false;
+        }
+
         var a = PasswordPolicy.Assess(value);
         StrengthValue = ((int)a.Strength + 1) * 20;
         StrengthText = value.Length == 0 ? string.Empty : $"{a.StrengthText} · estimated time to crack offline: {a.CrackTimeDisplay}";
@@ -246,12 +284,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
     [ObservableProperty]
     private string _recoveryKey = string.Empty;
 
-    [ObservableProperty]
-    private string _confirmGroupPrompt = string.Empty;
-
-    [ObservableProperty]
-    private string _confirmGroupInput = string.Empty;
-
+    /// <summary>Bound to the "I have saved my recovery key" check box.</summary>
     [ObservableProperty]
     private bool _recoveryConfirmed;
 
@@ -271,7 +304,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
     [RelayCommand]
     private async Task SaveRecoveryKey()
     {
-        var path = await Dialogs.SaveFileAsync(Ui.MainWindow!, "Save recovery key (use a different removable device)", "Rezen Backup Recovery Key.txt", "txt");
+        var path = await Dialogs.SaveFileAsync(Ui.MainWindow!, "Save recovery key file", RecoveryKit.FileName, "txt", startInDocuments: true);
         if (path is null)
         {
             return;
@@ -290,24 +323,7 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
 
         await File.WriteAllTextAsync(path, RecoveryKit.Document(RecoveryKey, _keySet!.Info.Id));
-        RecoveryMessage = "Saved. Keep that device somewhere safe and separate from your backup drive.";
-    }
-
-    [RelayCommand]
-    private void ConfirmRecoveryKey()
-    {
-        var groups = RecoveryKeyCodec.Groups(RecoveryKey);
-        if (string.Equals(ConfirmGroupInput.Trim(), groups[_confirmIndex], StringComparison.OrdinalIgnoreCase))
-        {
-            RecoveryConfirmed = true;
-            RecoverySkipped = false;
-            Ui.App.KeySets.ConfirmRecoveryKeySaved(_keySet!.Info.Id);
-            RecoveryMessage = "Recovery key confirmed.";
-        }
-        else
-        {
-            RecoveryMessage = "That group does not match. Check what you wrote down.";
-        }
+        RecoveryMessage = RecoveryKit.SavedMessage(path);
     }
 
     [RelayCommand]
@@ -471,8 +487,11 @@ public sealed partial class SetupWizardViewModel : PageViewModel
 
                 break;
             case StepRecovery when !RecoveryConfirmed && !RecoverySkipped:
-                Error = "Confirm that you saved your recovery key, or choose to skip it.";
+                Error = "Tick \"I have saved my recovery key\", or choose to skip it.";
                 return;
+            case StepRecovery when RecoveryConfirmed:
+                Ui.App.KeySets.ConfirmRecoveryKeySaved(_keySet!.Info.Id);
+                break;
             case StepReview:
                 await CreateAsync();
                 return;
@@ -515,9 +534,6 @@ public sealed partial class SetupWizardViewModel : PageViewModel
             Password = string.Empty;
             ConfirmPassword = string.Empty;
             RecoveryKey = _keySet.RecoveryKey;
-            var groups = RecoveryKeyCodec.Groups(RecoveryKey);
-            _confirmIndex = CryptoRandom.NextInt(groups.Length);
-            ConfirmGroupPrompt = $"To confirm you saved it, type group {_confirmIndex + 1} (the {Ordinal(_confirmIndex + 1)} group of four characters):";
             return true;
         }
         catch (RezenException ex)
@@ -531,7 +547,6 @@ public sealed partial class SetupWizardViewModel : PageViewModel
         }
     }
 
-    private static string Ordinal(int n) => n + (n % 10 == 1 && n != 11 ? "st" : n % 10 == 2 && n != 12 ? "nd" : n % 10 == 3 && n != 13 ? "rd" : "th");
 
     private async Task CreateAsync()
     {

@@ -96,6 +96,7 @@ public sealed class FastCdc
     {
         int capacity = Max * 2;
         var buffer = ArrayPool<byte>.Shared.Rent(capacity);
+        int used = 0;
         try
         {
             int start = 0;
@@ -125,6 +126,8 @@ public sealed class FastCdc
 
                         end += read;
                     }
+
+                    used = Math.Max(used, end);
                 }
 
                 int available = end - start;
@@ -140,7 +143,8 @@ public sealed class FastCdc
         }
         finally
         {
-            Array.Clear(buffer, 0, capacity);
+            // Wipe only what this file used: clearing the whole 2 MB for every small file was a measurable cost.
+            Array.Clear(buffer, 0, used);
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }

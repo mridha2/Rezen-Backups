@@ -237,7 +237,7 @@ public sealed partial class SecurityViewModel : PageViewModel
         }
 
         await Dialogs.RecoveryKeyAsync(Ui.MainWindow!, Ui.App, session.RevealRecoveryKey(), session.KeySetId);
-        if (!RecoveryConfigured && await Dialogs.ConfirmAsync(Ui.MainWindow!, "Recovery key saved?", "Have you printed or saved the recovery key somewhere safe and offline?", "Yes, it is saved"))
+        if (!RecoveryConfigured && await Dialogs.ConfirmAsync(Ui.MainWindow!, "Recovery key saved?", "Have you printed or saved the recovery key somewhere safe (not on the backup drive)?", "Yes, it is saved"))
         {
             Ui.App.KeySets.ConfirmRecoveryKeySaved(session.KeySetId);
         }

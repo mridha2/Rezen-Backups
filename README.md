@@ -6,7 +6,7 @@ Rezen Backup copies the folders you choose to an external drive as **encrypted, 
 
 - **Always encrypted** — AES-256-GCM (segmented STREAM construction, a unique key per object); there is no unencrypted mode.
 - **Password protected** — Argon2id (256 MiB, calibrated); the password is never stored.
-- **Offline recovery key** — print it or save it to another device; no online reset, no back door.
+- **Offline recovery key** — print it or save it as a file (on this computer or a USB stick, never the backup drive); no online reset, no back door.
 - **Dated snapshots** — `2026-11-03_20-00-00`, each a complete recovery point; incremental and deduplicated.
 - **Verified before it counts** — data is flushed, read back from the device, authenticated and committed with an authenticated record; interrupted backups stay `.incomplete`.
 - **Backup-only key for scheduled backups** — the key kept on the PC can add new backups but cannot decrypt stored file contents.
@@ -31,7 +31,7 @@ Rezen Backup copies the folders you choose to an external drive as **encrypted, 
 | `tests/RezenBackup.Tests` | Crypto, format, engine, crash-injection, application-flow, policy and offline tests |
 | `tests/RezenBackup.UI.Tests` | Headless UI tests driving the real windows and dialogs |
 | `docs/WINDOWS-TESTING.md` | Step-by-step manual test plan for Windows |
-| `installer/` | WiX MSI (Windows) and `.app`/`.dmg` packaging (macOS) |
+| `installer/` | WiX MSI and portable exe (Windows); `.app`, `.dmg` and `.pkg` installer (macOS); icon generator |
 
 ## Building and testing
 
@@ -51,10 +51,14 @@ dotnet run --project src/RezenBackup.Cli -- help
 
 ### Packaging
 
-- **macOS:** `installer/macos/build-app.sh [arm64|x64]` → `artifacts/macos/<arch>/Rezen Backup.app` and a `.dmg`.
-  Set `REZEN_MAC_SIGN_IDENTITY` (and optionally `REZEN_NOTARY_PROFILE`) to sign with the hardened runtime and notarize.
+- **macOS:** `installer/macos/build-app.sh [arm64|x64]` → `artifacts/macos/<arch>/Rezen Backup.app`, a drag-to-Applications
+  `.dmg`, and a `.pkg` installer (Installer wizard, always installs into `/Applications`, stops running copies and keeps
+  start-at-login pointing at the installed app). Set `REZEN_MAC_SIGN_IDENTITY` and `REZEN_MAC_INSTALLER_IDENTITY`
+  (and optionally `REZEN_NOTARY_PROFILE`) to sign with the hardened runtime and notarize.
 - **Windows:** `installer/windows/build.ps1` (on Windows) → `artifacts/windows/RezenBackup-<version>-x64.msi`.
   Set `REZEN_SIGN_CERT_THUMBPRINT` (and `REZEN_SIGN_TIMESTAMP_URL`) to Authenticode-sign binaries and the MSI.
+- **Windows portable:** `installer/windows/build-portable.sh` (any OS) → one self-contained `RezenBackup.exe` without
+  the shadow-copy service.
 
 Signing credentials are never stored in this repository. CI (`.github/workflows/ci.yml`) runs the tests on Windows, macOS and Linux and builds unsigned packages.
 

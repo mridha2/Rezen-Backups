@@ -21,9 +21,33 @@ public static class AgentTray
         {
             app.Logger.LogInformation("Agent already running; exiting duplicate.");
             app.Dispose();
-            desktop.Shutdown();
+            ExitCleanly(desktop);
             return;
         }
+
+        // macOS: the agent runs from the same app bundle, so LaunchServices treats the app as already running and
+        // sends "open Rezen Backup" (Finder, Dock, Launchpad, `open`) to the agent as a reopen event. Without this
+        // handler opening the app would do nothing while background protection is on.
+        if (Avalonia.Application.Current?.TryGetFeature<IActivatableLifetime>() is { } activatable)
+        {
+            activatable.Activated += (_, e) =>
+            {
+                if (e.Kind == ActivationKind.Reopen)
+                {
+                    AgentLauncher.OpenMainWindow();
+                }
+            };
+        }
+
+        // "Back up now?" when a backup drive is plugged in: open (or bring forward) the main window with the prompt.
+        host.BackupPromptRequested += (drive, jobIds) =>
+        {
+            var name = drive.Volume?.Label is { Length: > 0 } label ? label
+                : Path.GetFileName(drive.MountPath.TrimEnd('/', '\\')) is { Length: > 0 } folder ? folder // "/Volumes/BACKUP" → "BACKUP"
+                : drive.MountPath; // "E:\\"
+            UiSignals.SendDrivePrompt(app.Db, name, jobIds);
+            AgentLauncher.OpenMainWindow();
+        };
 
         TrayIcon? tray = null;
         if (app.Settings.ShowTrayIcon)
@@ -44,6 +68,14 @@ public static class AgentTray
 
         desktop.ShutdownRequested += (_, _) => cts.Cancel();
     }
+
+    /// <summary>
+    /// Exits with code 0 once the main loop is running. Calling Shutdown while Avalonia is still starting throws
+    /// ("Dispatcher shut down") and aborts the process; under launchd's KeepAlive that crash restarts the duplicate
+    /// agent every 10 seconds.
+    /// </summary>
+    public static void ExitCleanly(IClassicDesktopStyleApplicationLifetime desktop) =>
+        Dispatcher.UIThread.Post(() => desktop.Shutdown(0), DispatcherPriority.Background);
 
     private static TrayIcon BuildTray(RezenApp app, AgentHost host, IClassicDesktopStyleApplicationLifetime desktop)
     {

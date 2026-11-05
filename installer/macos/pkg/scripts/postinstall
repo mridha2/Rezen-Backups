@@ -1,0 +1,18 @@
+#!/bin/bash
+# Runs as root after the app is in /Applications. If the signed-in user already had background protection set to
+# start at login, point it at the newly installed app and start it again, so scheduled backups continue.
+APP="/Applications/Rezen Backup.app"
+EXE="$APP/Contents/MacOS/RezenBackup"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null
+
+user=$(stat -f %Su /dev/console 2>/dev/null)
+[[ -z "$user" || "$user" == "root" ]] && exit 0
+uid=$(id -u "$user" 2>/dev/null) || exit 0
+home=$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | sed 's/^NFSHomeDirectory: //')
+plist="$home/Library/LaunchAgents/com.rezen.backup.agent.plist"
+if [[ -n "$home" && -f "$plist" ]]; then
+  sudo -u "$user" /usr/libexec/PlistBuddy -c "Set :ProgramArguments:0 $EXE" "$plist"
+  launchctl bootout "gui/$uid/com.rezen.backup.agent" 2>/dev/null
+  launchctl bootstrap "gui/$uid" "$plist" 2>/dev/null
+fi
+exit 0
