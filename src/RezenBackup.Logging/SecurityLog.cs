@@ -24,6 +24,7 @@ public static class SecurityEvents
     public const string RememberDisabled = "RememberOnPcDisabled";
     public const string CredentialUnavailable = "StoredCredentialUnavailable";
     public const string KeySetCreated = "KeySetCreated";
+    public const string KeySetDiscarded = "KeySetDiscarded";
     public const string AnomalyDetected = "UnusualChangesDetected";
     public const string SnapshotMissing = "SnapshotMissingFromDrive";
     public const string Locked = "AppLocked";

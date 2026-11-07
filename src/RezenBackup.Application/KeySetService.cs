@@ -24,7 +24,52 @@ public sealed class KeySetService
 
     public IReadOnlyList<KeySetInfo> All => _app.Db.KeySets();
 
-    public KeySetInfo? Default => All.FirstOrDefault();
+    /// <summary>
+    /// The Key Set the app unlocks by default: the newest one that a backup job uses, otherwise the newest one. An
+    /// older key set that no job references (left behind by an abandoned first-run setup) must never win, or the
+    /// password and recovery key of the real key set would be checked against the wrong key file.
+    /// </summary>
+    public KeySetInfo? Default
+    {
+        get
+        {
+            var all = All;
+            if (all.Count == 0)
+            {
+                return null;
+            }
+
+            var inUse = _app.Db.Jobs().Select(j => j.KeySetId).ToHashSet();
+            return all.LastOrDefault(k => inUse.Contains(k.Id)) ?? all[^1];
+        }
+    }
+
+    /// <summary>
+    /// Removes a Key Set that no backup job uses (its database row, local key file and any remembered credential).
+    /// Called when first-run setup is abandoned after the password step so the unused key set does not linger.
+    /// </summary>
+    public void Discard(Guid keySetId)
+    {
+        if (_app.Db.Jobs().Any(j => j.KeySetId == keySetId))
+        {
+            throw new RezenException(ErrorCode.InvalidConfiguration, "This key set is used by a backup job and cannot be removed.", null, null);
+        }
+
+        _app.Platform.Credentials.Delete(keySetId);
+        var path = _app.Paths.LocalKeyFile(keySetId);
+        try
+        {
+            File.Delete(path);
+            File.Delete(path + ".new");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _app.Logger.LogWarning("Could not delete the unused local key file: {Message}", ex.Message);
+        }
+
+        _app.Db.DeleteKeySet(keySetId);
+        _app.SecurityLog.Record(SecurityEvents.KeySetDiscarded, null, keySetId.ToString());
+    }
 
     /// <summary>Creates a Key Set: random Root Secret, Argon2id password slot, local key file and recovery key.</summary>
     public NewKeySet Create(ReadOnlySpan<char> password, string displayName = "Rezen Backup password")

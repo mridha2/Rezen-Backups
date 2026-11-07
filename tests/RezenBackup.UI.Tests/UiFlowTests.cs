@@ -30,6 +30,32 @@ public class UiFlowTests
         Assert.Equal(expectedView, view!.GetType().Name);
     }
 
+    /// <summary>Leaving first-run setup after the password step removes the key set it created, so nothing stale can be unlocked later.</summary>
+    [AvaloniaFact]
+    public async Task SetupWizard_Abandoned_DiscardsItsKeySet()
+    {
+        DialogDriver.Reset();
+        using var f = new UiFixture();
+        var (window, vm) = Open(f);
+        var wizard = Assert.IsType<SetupWizardViewModel>(vm.CurrentPage);
+        wizard.Sources.Add(f.Source);
+        await wizard.NextCommand.ExecuteAsync(null);
+        wizard.SelectedDestination = wizard.Destinations.First();
+        await wizard.NextCommand.ExecuteAsync(null);
+        wizard.Password = UiFixture.Password;
+        wizard.ConfirmPassword = UiFixture.Password;
+        await wizard.NextCommand.ExecuteAsync(null);
+        Assert.True(wizard.IsRecovery);
+        var created = Assert.Single(f.App.KeySets.All);
+        Assert.True(File.Exists(f.App.Paths.LocalKeyFile(created.Id)));
+
+        wizard.ImportExistingCommand.Execute(null);
+        Assert.IsType<ImportViewModel>(vm.CurrentPage);
+        Assert.Empty(f.App.KeySets.All);
+        Assert.False(File.Exists(f.App.Paths.LocalKeyFile(created.Id)));
+        Assert.Empty(f.App.Jobs.All);
+    }
+
     /// <summary>The first-run wizard, driven through the real view models and dialogs, creates an encrypted backup job.</summary>
     [AvaloniaFact]
     public async Task SetupWizard_CreatesJob_AndRunsFirstBackup()
