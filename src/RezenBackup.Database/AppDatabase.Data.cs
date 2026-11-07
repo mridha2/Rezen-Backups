@@ -64,6 +64,8 @@ public sealed partial class AppDatabase
 
     public KeySetInfo? KeySet(Guid id) => KeySets().FirstOrDefault(k => k.Id == id);
 
+    public void DeleteKeySet(Guid id) => Exec("DELETE FROM key_sets WHERE id=$id", ("$id", id.ToString()));
+
     // ---------------------------------------------------------------- drives
 
     public void UpsertDrive(DriveRecord d) => Exec(

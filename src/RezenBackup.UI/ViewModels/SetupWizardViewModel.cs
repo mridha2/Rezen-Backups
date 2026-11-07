@@ -625,9 +625,33 @@ public sealed partial class SetupWizardViewModel : PageViewModel
     public override void OnDeactivated()
     {
         RecoveryKey = string.Empty;
-        _keySet?.Secret.Dispose();
+        DiscardUnusedKeySet();
         Password = string.Empty;
         ConfirmPassword = string.Empty;
+    }
+
+    /// <summary>
+    /// Leaving the wizard after the password step but before the job exists: remove the key set created for it, or it
+    /// would linger as the oldest key set with nothing to unlock and a password nobody will be asked for again.
+    /// </summary>
+    private void DiscardUnusedKeySet()
+    {
+        if (_keySet is null)
+        {
+            return;
+        }
+
+        var keySet = _keySet;
+        _keySet = null;
+        keySet.Secret.Dispose();
+        try
+        {
+            Ui.App.KeySets.Discard(keySet.Info.Id);
+        }
+        catch (RezenException)
+        {
+            // Used by a job after all: keep it.
+        }
     }
 
     public bool ShowImport => !_newJobOnly;

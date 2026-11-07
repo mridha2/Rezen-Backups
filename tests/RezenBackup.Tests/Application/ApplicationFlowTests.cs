@@ -35,6 +35,48 @@ public class ApplicationFlowTests
         Assert.Throws<RezenException>(() => f.App.KeySets.Create("short"));
     }
 
+    /// <summary>
+    /// A key set left behind by an abandoned first-run setup is older than the one the job uses. The default key set,
+    /// and so the unlock dialog, must follow the job: the password and recovery key of the real key set must work.
+    /// </summary>
+    [Fact]
+    public async Task Default_FollowsTheJobsKeySet_NotTheOldestOne()
+    {
+        using var f = new AppFixture();
+        var orphan = f.App.KeySets.Create("abandoned setup attempt 1");
+        var (job, ks) = Setup(f);
+        Assert.NotEqual(orphan.Info.Id, ks.Info.Id);
+        Assert.Equal(ks.Info.Id, job.KeySetId);
+
+        Assert.Equal(ks.Info.Id, f.App.KeySets.Default!.Id);
+        using (var secret = await f.App.KeySets.UnlockAsync(f.App.KeySets.Default!.Id, AppFixture.Password))
+        {
+            Assert.True(secret.ContentEquals(ks.Secret));
+        }
+
+        using (var secret = f.App.KeySets.UnlockWithRecoveryKey(f.App.KeySets.Default!.Id, ks.RecoveryKey))
+        {
+            Assert.True(secret.ContentEquals(ks.Secret));
+        }
+
+        // An unused key set can be discarded; one a job uses cannot.
+        Assert.True(File.Exists(f.App.Paths.LocalKeyFile(orphan.Info.Id)));
+        f.App.KeySets.Discard(orphan.Info.Id);
+        Assert.False(File.Exists(f.App.Paths.LocalKeyFile(orphan.Info.Id)));
+        Assert.Equal([ks.Info.Id], f.App.KeySets.All.Select(k => k.Id));
+        Assert.Throws<RezenException>(() => f.App.KeySets.Discard(ks.Info.Id));
+        Assert.Equal(ks.Info.Id, f.App.KeySets.Default!.Id);
+    }
+
+    [Fact]
+    public void Default_WithoutJobs_IsTheNewestKeySet()
+    {
+        using var f = new AppFixture();
+        f.App.KeySets.Create("abandoned setup attempt 1");
+        var latest = f.App.KeySets.Create(AppFixture.Password);
+        Assert.Equal(latest.Info.Id, f.App.KeySets.Default!.Id);
+    }
+
     [Fact]
     public async Task EndToEnd_Backup_Unlock_Browse_Restore()
     {
