@@ -68,6 +68,65 @@ public class ApplicationFlowTests
         Assert.Equal(ks.Info.Id, f.App.KeySets.Default!.Id);
     }
 
+    /// <summary>Credentials of the abandoned key set are reported as belonging to it, not as typing mistakes.</summary>
+    [Fact]
+    public async Task CredentialsOfAnotherKeySet_AreExplained()
+    {
+        using var f = new AppFixture();
+        const string orphanPassword = "abandoned setup attempt 1";
+        var orphan = f.App.KeySets.Create(orphanPassword);
+        var (job, ks) = Setup(f);
+        var id = f.App.KeySets.Default!.Id;
+        Assert.Equal(ks.Info.Id, id);
+
+        var ex = await Assert.ThrowsAsync<RezenException>(() => f.App.KeySets.UnlockAsync(id, orphanPassword));
+        Assert.Equal(ErrorCode.WrongPassword, ex.Code);
+        Assert.Contains("different backup set", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(job.Name, ex.Message, StringComparison.Ordinal);
+
+        ex = Assert.Throws<RezenException>(() => f.App.KeySets.UnlockWithRecoveryKey(id, orphan.RecoveryKey));
+        Assert.Equal(ErrorCode.WrongPassword, ex.Code);
+        Assert.Contains("different backup set", ex.Message, StringComparison.Ordinal);
+
+        // A password that opens nothing stays a plain wrong-password error.
+        ex = await Assert.ThrowsAsync<RezenException>(() => f.App.KeySets.UnlockAsync(id, "nothing opens with this one"));
+        Assert.DoesNotContain("different backup set", ex.Message, StringComparison.Ordinal);
+
+        Assert.Equal(orphan.Info.Id, f.App.KeySets.FindByPassword(orphanPassword)!.Id);
+        Assert.Equal(ks.Info.Id, f.App.KeySets.FindByPassword(AppFixture.Password)!.Id);
+        Assert.Null(f.App.KeySets.FindByPassword("nothing opens with this one"));
+        Assert.Equal(orphan.Info.Id, f.App.KeySets.FindByRecoveryKey(orphan.RecoveryKey)!.Id);
+        Assert.Equal(ks.Info.Id, f.App.KeySets.FindByRecoveryKey(ks.RecoveryKey)!.Id);
+        Assert.Null(f.App.KeySets.FindByRecoveryKey("RZN1-not-a-key"));
+    }
+
+    /// <summary>Administrator reset: everything local goes, the drive is untouched, and setup can start again.</summary>
+    [Fact]
+    public async Task ResetAll_RemovesLocalConfiguration_AndKeepsTheDrive()
+    {
+        using var f = new AppFixture();
+        f.App.KeySets.Create("abandoned setup attempt 1");
+        var (job, ks) = Setup(f);
+        var run = await f.App.Backups.RunAsync(job.Id, RunTrigger.Manual, ks.Secret.Clone());
+        Assert.Equal(RunOutcome.Success, run.Outcome);
+        var repoPath = f.App.Jobs.RepositoryPath(job.Id)!;
+        f.App.SaveSettings(f.App.Settings with { SetupCompleted = true });
+
+        var result = f.App.KeySets.ResetAll();
+        Assert.Equal(1, result.JobsRemoved);
+        Assert.Equal(2, result.KeySetsRemoved);
+        Assert.Empty(f.App.KeySets.All);
+        Assert.Empty(f.App.Jobs.All);
+        Assert.Null(f.App.KeySets.Default);
+        Assert.False(f.App.Settings.SetupCompleted);
+        Assert.Empty(Directory.Exists(f.App.Paths.KeysDirectory) ? Directory.GetFiles(f.App.Paths.KeysDirectory) : []);
+        Assert.True(Directory.Exists(repoPath)); // backups on the drive are never deleted by a reset
+
+        var fresh = f.App.KeySets.Create(AppFixture.Password);
+        Assert.NotEqual(ks.Info.Id, fresh.Info.Id);
+        Assert.Equal(fresh.Info.Id, f.App.KeySets.Default!.Id);
+    }
+
     [Fact]
     public void Default_WithoutJobs_IsTheNewestKeySet()
     {

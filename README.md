@@ -81,7 +81,10 @@ rezen snapshots | ls | search --name budget --versions
 rezen restore --to ~/Restored [--snapshot 2026-11-03_20-00-00] [--path Invoices]
 rezen verify --deep [--repair]
 rezen import /Volumes/Backup [--recovery-key]
-rezen change-password | recovery-key | remember on|off [--full-key] | history | security-log | status
+rezen change-password [--recovery-key]       new password; --recovery-key when the password is forgotten
+rezen recovery-key | remember on|off [--full-key] | history | security-log | status
+rezen check-credentials                      which backup set on this computer a password or recovery key opens
+rezen reset-encryption [--yes]               administrator: start over when both password and recovery key are lost
 ```
 
 Passwords are read without echo (or from standard input with `--password-stdin`) and are never accepted as command-line arguments.
