@@ -194,7 +194,89 @@ public sealed class KeySetService
             throw new RezenException(ErrorCode.DriveNotRegistered, "Connect your backup drive to unlock this backup on this computer.", null, null);
         }
 
+        // The password may be right for another key set on this computer (an earlier setup attempt, say): say so,
+        // because "wrong password" sends the user looking for typing mistakes that do not exist.
+        if (FindByPassword(pw, except: keySetId) is { } other)
+        {
+            throw new RezenException(ErrorCode.WrongPassword, OtherKeySetMessage("password", other, keySetId), null, null);
+        }
+
         throw new RezenException(ErrorCode.WrongPassword);
+    }
+
+    /// <summary>
+    /// The key set on this computer whose local key file this password opens, if any (support and diagnostics; the
+    /// Root Secret is not returned). Costs one Argon2id derivation per key set tried.
+    /// </summary>
+    public KeySetInfo? FindByPassword(string password, Guid? except = null)
+    {
+        using var pw = PasswordEncoding.ToKeyMaterial(password);
+        return FindByPassword(pw, except);
+    }
+
+    private KeySetInfo? FindByPassword(SecretBuffer pw, Guid? except)
+    {
+        foreach (var info in All.Where(k => k.Id != except))
+        {
+            var file = LocalKeyFile(info.Id);
+            if (file is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                using var secret = file.Unlock(pw);
+                return info;
+            }
+            catch (CryptoException)
+            {
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The key set on this computer this recovery key belongs to, if any; null also when it is malformed.</summary>
+    public KeySetInfo? FindByRecoveryKey(string recoveryKey, Guid? except = null)
+    {
+        RootSecret secret;
+        try
+        {
+            secret = RecoveryKeyCodec.Decode(recoveryKey);
+        }
+        catch (CryptoException)
+        {
+            return null;
+        }
+
+        using (secret)
+        {
+            return FindByRecoveryKey(secret, except);
+        }
+    }
+
+    private KeySetInfo? FindByRecoveryKey(RootSecret secret, Guid? except) =>
+        All.Where(k => k.Id != except).FirstOrDefault(k => LocalKeyFile(k.Id) is { KeyCheck: not null } file && file.MatchesKeyCheck(secret));
+
+    /// <summary>Names of the jobs that use a key set, for messages.</summary>
+    public IReadOnlyList<string> JobNamesOf(Guid keySetId) =>
+        _app.Db.Jobs().Where(j => j.KeySetId == keySetId).Select(j => j.Name).ToList();
+
+    private string OtherKeySetMessage(string credential, KeySetInfo other, Guid intended)
+    {
+        var otherJobs = JobNamesOf(other.Id);
+        var intendedInfo = _app.Db.KeySet(intended);
+        var intendedJobs = JobNamesOf(intended);
+        string otherUse = otherJobs.Count == 0
+            ? "is not used by any backup job"
+            : $"protects {string.Join(", ", otherJobs.Select(n => $"\"{n}\""))}";
+        string intendedUse = intendedJobs.Count == 0
+            ? "the backup set you are unlocking"
+            : $"{string.Join(", ", intendedJobs.Select(n => $"\"{n}\""))}";
+        return $"This {credential} belongs to a different backup set on this computer, created {Fmt.When(other.CreatedUtc)}, which {otherUse}. " +
+               $"{intendedUse} uses the password and recovery key created {Fmt.When(intendedInfo?.CreatedUtc)}. " +
+               "If you no longer have those, a system administrator can start over with 'rezen reset-encryption' (existing backups cannot be read afterwards).";
     }
 
     /// <summary>Unlocks with the recovery key and confirms it belongs to this Key Set.</summary>
@@ -234,13 +316,53 @@ public sealed class KeySetService
 
         if (!verified)
         {
+            var other = FindByRecoveryKey(secret, except: keySetId);
             secret.Dispose();
             _app.SecurityLog.Record(SecurityEvents.FailedUnlock, null, "recovery key");
-            throw new RezenException(ErrorCode.WrongPassword);
+            throw other is null
+                ? new RezenException(ErrorCode.WrongPassword)
+                : new RezenException(ErrorCode.WrongPassword, OtherKeySetMessage("recovery key", other, keySetId), null, null);
         }
 
         _app.SecurityLog.Record(SecurityEvents.RecoveryKeyUsed);
         return secret;
+    }
+
+    /// <summary>
+    /// Administrative reset for a user who has lost both the password and the recovery key (DESIGN §7.2): removes
+    /// every backup job, key set, local key file and remembered credential on this computer so setup can run again
+    /// with a new password and recovery key. Nothing on the backup drives is touched; those backups stay encrypted
+    /// under the old Root Secret and can only be imported again with the old password or recovery key.
+    /// </summary>
+    public EncryptionResetResult ResetAll()
+    {
+        var jobs = _app.Db.Jobs();
+        foreach (var job in jobs)
+        {
+            _app.Jobs.Delete(job.Id);
+        }
+
+        var keySets = All;
+        foreach (var info in keySets)
+        {
+            _app.Platform.Credentials.Delete(info.Id);
+            var path = _app.Paths.LocalKeyFile(info.Id);
+            try
+            {
+                File.Delete(path);
+                File.Delete(path + ".new");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _app.Logger.LogWarning("Could not delete a local key file during reset: {Message}", ex.Message);
+            }
+
+            _app.Db.DeleteKeySet(info.Id);
+        }
+
+        _app.SaveSettings(_app.Settings with { SetupCompleted = false });
+        _app.SecurityLog.Record(SecurityEvents.EncryptionReset, null, $"jobs removed: {jobs.Count}, key sets removed: {keySets.Count}");
+        return new EncryptionResetResult(jobs.Count, keySets.Count);
     }
 
     private void RestoreLocalKeyFile(Guid keySetId, string repoPath, RootSecret secret)
@@ -526,3 +648,5 @@ public sealed class KeySetService
 }
 
 public sealed record PasswordChangeResult(int DrivesUpdated, int DrivesPending);
+
+public sealed record EncryptionResetResult(int JobsRemoved, int KeySetsRemoved);

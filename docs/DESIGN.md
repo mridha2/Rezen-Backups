@@ -392,6 +392,9 @@ RZN1-7KQ4-HX2M-P9TD-…-W3QF-C8      (14 groups of 4 Crockford-Base32 characters
 3. **Viewing it later:** an unlocked user can show the recovery key again after re-entering the password. This helps users who skipped step 1, and it gives an attacker nothing they don't already have with the password.
 4. **Rotation:** RS cannot be changed without re-encrypting data. "My recovery key may be exposed" therefore leads to **Re-key** (§8.4), which starts a new repository with a new RS and keeps the old one until the new one is verified.
 5. **Never stored by Rezen:** not in the database, the registry, logs, the drive, or DPAPI. Recovery uses no internet and has no back door (spec §12).
+6. **Forgotten password, recovery key at hand:** the recovery key unlocks (UI "Unlock with recovery key", CLI `change-password --recovery-key`) and a new password is set by re-wrapping RS (§8.1). The recovery key itself stays the same, because it *is* RS (point 4).
+7. **Both lost:** there is nothing to decrypt with, by design. `rezen reset-encryption` (administrator) removes every job, Key Set, local key file and remembered credential on the computer so setup runs again with a new RS, password and recovery key. Backups already on the drives are left in place but are unreadable until imported with the old password or recovery key. Any administrator recovery of RS would need an escrow slot (RS wrapped to an organisation key); none exists.
+8. **Credential for another Key Set:** an abandoned setup can leave a second Key Set on the computer. A password or recovery key that opens a Key Set other than the one being unlocked is reported as such ("belongs to a different backup set, created …, not used by any backup job") instead of "wrong password", and `rezen check-credentials` reports the same without revealing anything.
 
 ---
 

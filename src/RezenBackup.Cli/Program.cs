@@ -45,6 +45,8 @@ internal static class Program
                 "import" => Import(app, opts),
                 "change-password" => await ChangePassword(app, opts),
                 "recovery-key" => await RecoveryKey(app, opts),
+                "check-credentials" => CheckCredentials(app, opts),
+                "reset-encryption" => ResetEncryption(app, opts),
                 "remember" => await Remember(app, opts),
                 "history" => History(app, opts),
                 "security-log" => SecurityLog(app),
@@ -84,8 +86,12 @@ internal static class Program
               restore <job> --to DIR [--snapshot FOLDER] [--path a/b] [--on-conflict skip|replace|keep-both]
               verify <job> [--deep]               Verify backup integrity
               import <DRIVE_ROOT> [--recovery-key]  Import existing Rezen Backup from a drive
-              change-password                     Change the backup password (re-wraps keys, no re-encryption)
+              change-password [--recovery-key]    Change the backup password (re-wraps keys, no re-encryption);
+                                                  --recovery-key: forgotten password, unlock with the recovery key instead
               recovery-key                        Show the recovery key (needs password)
+              check-credentials                   Say which backup set on this computer a password or recovery key opens
+              reset-encryption [--yes]            Administrator: remove all jobs, passwords and key files on this computer
+                                                  so setup runs again with a new password and recovery key (see help text)
               remember on|off [--full-key]        Remember a backup-only key (default) or the full key for scheduled backups
               history [<job>]                     Backup history
               security-log                        Security events and chain verification
@@ -526,7 +532,10 @@ internal static class Program
     private static async Task<int> ChangePassword(RezenApp app, Options opts)
     {
         var ks = app.KeySets.Default ?? throw new RezenException(ErrorCode.KeyUnavailable);
-        using var session = await UnlockedSession.UnlockAsync(app, ks.Id, ReadPassword(opts, "Current password: "));
+        // Forgotten password: the recovery key is the Root Secret itself, so it can set a new password (DESIGN §8.1).
+        using var session = opts.Has("recovery-key")
+            ? UnlockedSession.UnlockWithRecoveryKey(app, ks.Id, ReadPassword(opts, "Recovery key: "))
+            : await UnlockedSession.UnlockAsync(app, ks.Id, ReadPassword(opts, "Current password: "));
         var newPw = ReadPassword(opts, "New password: ");
         if (!opts.Has("password-stdin") && ReadPassword(opts, "Confirm new password: ") != newPw)
         {
@@ -549,6 +558,102 @@ internal static class Program
         var ks = app.KeySets.Default ?? throw new RezenException(ErrorCode.KeyUnavailable);
         using var session = await UnlockedSession.UnlockAsync(app, ks.Id, ReadPassword(opts, "Backup password: "));
         Console.WriteLine(session.RevealRecoveryKey());
+        return 0;
+    }
+
+    /// <summary>
+    /// Support tool: which key set on this computer does a password or recovery key open? Nothing secret is printed.
+    /// Exit code 0 when the credential opens the default key set (the one the backup jobs use), 1 otherwise.
+    /// </summary>
+    private static int CheckCredentials(RezenApp app, Options opts)
+    {
+        var all = app.KeySets.All;
+        if (all.Count == 0)
+        {
+            Console.WriteLine("No backup password exists on this computer yet.");
+            return 1;
+        }
+
+        var def = app.KeySets.Default!;
+        Console.WriteLine("Backup sets on this computer:");
+        foreach (var k in all)
+        {
+            var jobs = app.KeySets.JobNamesOf(k.Id);
+            Console.WriteLine($"  {k.Id:D}  created {Fmt.When(k.CreatedUtc)}  {(jobs.Count == 0 ? "no backup jobs" : "jobs: " + string.Join(", ", jobs))}{(k.Id == def.Id ? "  [default]" : string.Empty)}");
+        }
+
+        Console.WriteLine();
+        bool ok = true;
+        var password = ReadPassword(opts, "Password (press Enter to skip): ");
+        if (password.Length > 0)
+        {
+            ok &= Report("password", app.KeySets.FindByPassword(password), def);
+        }
+
+        var key = ReadPassword(opts, "Recovery key (press Enter to skip): ");
+        if (key.Length > 0)
+        {
+            ok &= Report("recovery key", app.KeySets.FindByRecoveryKey(key), def);
+        }
+
+        return ok ? 0 : 1;
+
+        bool Report(string what, KeySetInfo? match, KeySetInfo expected)
+        {
+            if (match is null)
+            {
+                Console.WriteLine($"The {what} does not open any backup set on this computer.");
+                return false;
+            }
+
+            var jobs = app.KeySets.JobNamesOf(match.Id);
+            Console.WriteLine($"The {what} opens the backup set created {Fmt.When(match.CreatedUtc)} ({(jobs.Count == 0 ? "no backup jobs" : string.Join(", ", jobs))}).");
+            if (match.Id != expected.Id)
+            {
+                Console.WriteLine($"  That is NOT the set the backup jobs use (created {Fmt.When(expected.CreatedUtc)}).");
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Administrator reset for a user who has lost both the password and the recovery key. Nothing can decrypt the
+    /// existing backups without one of them, so this removes the local configuration and lets setup start over.
+    /// </summary>
+    private static int ResetEncryption(RezenApp app, Options opts)
+    {
+        var jobs = app.Jobs.All;
+        var keySets = app.KeySets.All;
+        Console.WriteLine("This removes from THIS COMPUTER:");
+        Console.WriteLine($"  {jobs.Count} backup job(s){(jobs.Count == 0 ? string.Empty : ": " + string.Join(", ", jobs.Select(j => j.Name)))}");
+        Console.WriteLine($"  {keySets.Count} backup password(s) / key set(s) and their local key files");
+        Console.WriteLine("  any remembered credentials in the OS credential store");
+        Console.WriteLine();
+        Console.WriteLine("Backups already on the drives are NOT deleted, but they stay encrypted under the old password and");
+        Console.WriteLine("recovery key: they can only be opened again by importing them with one of those. Setup will ask for a");
+        Console.WriteLine("new password and show a new recovery key, and the next backup starts from scratch.");
+        Console.WriteLine();
+        if (!opts.Has("yes"))
+        {
+            if (opts.Has("password-stdin") || Console.IsInputRedirected)
+            {
+                Console.Error.WriteLine("Pass --yes to confirm the reset.");
+                return 1;
+            }
+
+            Console.Write("Type RESET to continue: ");
+            if (Console.ReadLine()?.Trim() != "RESET")
+            {
+                Console.WriteLine("Cancelled. Nothing was changed.");
+                return 1;
+            }
+        }
+
+        var r = app.KeySets.ResetAll();
+        Console.WriteLine($"Done. Jobs removed: {r.JobsRemoved}. Key sets removed: {r.KeySetsRemoved}.");
+        Console.WriteLine("Open Rezen Backup (or run 'rezen init') to create a new password and recovery key.");
         return 0;
     }
 
